@@ -4,7 +4,7 @@ Godot 4.6.3 / Windows x86_64 独立游戏原型。当前以可玩经营规则为
 
 ## 试玩
 
-GitHub 下载：[v0.3.1 Windows 试玩包](https://github.com/INGNAH/jiligulu/releases/tag/v0.3.1)。下载 Release 附件 `StarPot-v0.3.1-Windows.zip`，解压运行 `StarPot.exe`。
+GitHub 下载：[v0.3.1 Windows 试玩包](https://github.com/INGNAH/jiligulu/releases/tag/v0.3.1)。下载[试玩 ZIP](https://github.com/INGNAH/jiligulu/raw/refs/heads/main/releases/StarPot-v0.3.1-Windows.zip)，解压运行 `StarPot.exe`。
 
 下载 `StarPot-v0.3.1.download` 后，将扩展名改成 `.zip`，解压运行 `StarPot.exe`。也可直接解压 ZIP 文件。不需要联网或安装 Godot。
 
