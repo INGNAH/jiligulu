@@ -58,10 +58,10 @@ func run():
 	check(not game.add_plate(0,0,0),"per-route plate capacity prevents overfilling")
 	# Compare identical meals with and without hunger penalty at settlement.
 	var guest_index=0
-	if game.guests[guest_index]==null: game.guests[guest_index]={"eaten":3,"score":80,"hungry":0.0}
-	game.guests[guest_index].eaten=3;game.guests[guest_index].score=80;game.guests[guest_index].hungry=0.0
+	if game.guests[guest_index]==null: game.guests[guest_index]={"full":80,"capacity":80,"liked":true,"eaten":3,"score":80,"hungry":0.0}
+	game.guests[guest_index].full=80;game.guests[guest_index].capacity=80;game.guests[guest_index].liked=true;game.guests[guest_index].eaten=3;game.guests[guest_index].score=80;game.guests[guest_index].hungry=0.0
 	var baseline=game.satisfaction;game.checkout(guest_index);var fast=game.satisfaction-baseline
-	game.guests[guest_index]={"eaten":3,"score":80,"hungry":30.0}
+	game.guests[guest_index]={"full":80,"capacity":80,"liked":true,"eaten":3,"score":80,"hungry":30.0}
 	baseline=game.satisfaction;game.checkout(guest_index)
 	check(game.satisfaction-baseline<fast,"long food waits reduce rating even if guest eventually eats")
 	# Restart state after synthetic checkout checks.
@@ -74,7 +74,7 @@ func run():
 		for i in range(1600):
 			if game.phase!="营业": break
 			game.tick_business(0.1)
-		check(game.phase=="结算" and game.served==10 and game.money==cash+game.income-game.spending,"consecutive day %d settles all guests and reconciles ledger"%(d+1))
+		check(game.phase=="结算" and game.served==game.guest_target and game.money==cash+game.income-game.spending,"consecutive day %d settles all guests and reconciles ledger"%(d+1))
 		check(game.plates.is_empty() and game.staff_carry.is_empty() and game.staff_path.is_empty(),"all food and staff state returned at closing")
 		var snapshot=game.layout.snapshot();var saved_day=game.day
 		game.load_game()

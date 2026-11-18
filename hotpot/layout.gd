@@ -30,8 +30,17 @@ func chairs(t: Dictionary) -> Array:
 	var result=[]
 	for c in body(t): result.append(c+d)
 	return result
+var facilities=[]
+func facility_at(c: Vector2i) -> int:
+	for i in range(facilities.size()):
+		if c==Vector2i(facilities[i].x,facilities[i].y): return i
+	return -1
+func place_facility(c:Vector2i, kind:int) -> bool:
+	if not floor_at(c) or occupied(c): return false
+	facilities.append({"x":c.x,"y":c.y,"kind":kind})
+	return true
 func occupied(c: Vector2i, skip: int=-1) -> bool:
-	if belts.has(c): return true
+	if belts.has(c) or facility_at(c)>=0: return true
 	for i in range(tables.size()):
 		if i!=skip and (c in body(tables[i]) or c in chairs(tables[i])): return true
 	for f in feeders:
@@ -62,6 +71,8 @@ func place_feeder(c: Vector2i, zone: int) -> bool:
 	feeders.append({"x":c.x,"y":c.y,"zone":zone})
 	return true
 func erase(c: Vector2i):
+	var station=facility_at(c)
+	if station>=0: facilities.remove_at(station); return
 	var i=table_at(c)
 	if i>=0: tables.remove_at(i); return
 	belts.erase(c)
@@ -87,6 +98,7 @@ func path(a: Vector2i,b: Vector2i) -> Array:
 			if walkable(n) and not previous.has(n): previous[n]=c; queue.append(n)
 	return []
 func reset():
+	facilities.clear()
 	shape=0; tables.clear(); belts.clear(); feeders.clear()
 	for bounds in [[1,3,7,6,0],[12,3,18,6,1]]:
 		for x in range(bounds[0],bounds[2]+1):
@@ -95,10 +107,13 @@ func reset():
 			belts[Vector2i(bounds[0],y)]=bounds[4]; belts[Vector2i(bounds[2],y)]=bounds[4]
 	for a in [[2,2,2,0],[5,2,2,0],[3,7,0,0],[13,2,2,1],[16,2,2,1],[14,7,0,1]]:
 		tables.append({"x":a[0],"y":a[1],"rot":a[2],"zone":a[3]})
+	facilities=[{"x":7,"y":9,"kind":0},{"x":10,"y":7,"kind":1},{"x":17,"y":9,"kind":2}]
 	feeders=[{"x":0,"y":5,"zone":0},{"x":11,"y":5,"zone":1}]
 	compile()
 func compile() -> bool:
 	routes.clear(); errors.clear()
+	for f in facilities:
+		if path(Vector2i(20,11),Vector2i(f.x,f.y)).is_empty(): errors.append("自取或等候设施没有可达通道")
 	var unseen=belts.duplicate()
 	while not unseen.is_empty():
 		var start=unseen.keys()[0]
@@ -160,8 +175,11 @@ func pickup_index(t: Dictionary,r: int) -> int:
 func snapshot() -> Dictionary:
 	var tiles=[]
 	for c in belts: tiles.append([c.x,c.y,belts[c]])
-	return {"shape":shape,"tables":tables.duplicate(true),"belts":tiles,"feeders":feeders.duplicate(true)}
+	return {"facilities":facilities.duplicate(true),"shape":shape,"tables":tables.duplicate(true),"belts":tiles,"feeders":feeders.duplicate(true)}
 func restore(data: Dictionary):
+	facilities=data.get("facilities",[]).duplicate(true)
+	for f in facilities:
+		for key in ["x","y","kind"]: f[key]=int(f[key])
 	shape=clampi(int(data.get("shape",0)),0,2)
 	tables=data.get("tables",[]).duplicate(true);feeders=data.get("feeders",[]).duplicate(true);belts.clear()
 	for t in tables:

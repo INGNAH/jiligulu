@@ -28,6 +28,9 @@ func run():
 	check(game.start_business(),"open restaurant with sufficient stock")
 	game.selected=0;game.take_food()
 	check(game.held==0 and game.ready_food[0]==11,"taking a plate removes it from prepared stock")
+	game.held=-1;game.ready_food[0]+=1
+	check(game.guests[0].order==-1,"no special request on arrival")
+	game.guests[0].order=0;game.cook_order(0);game.tick_business(2.5);game.guests[0].trip.clear()
 	var cash=game.money
 	check(game.serve_guest(0) and game.money==cash+6 and game.held==-1,"preference delivery awards exact tip and consumes plate")
 	game.held=0
@@ -39,7 +42,7 @@ func run():
 		if game.guests[i]!=null and game.guests[i].special: hero_index=i
 	game.held=3
 	check(not game.serve_guest(hero_index) and game.held==3,"hero rejects spicy food without consuming it")
-	game.held=6;cash=game.money
+	game.held=-1;game.guests[hero_index].order=0;game.cook_order(0);game.tick_business(2.5);game.guests[hero_index].trip.clear();cash=game.money
 	check(game.serve_guest(hero_index) and game.money==cash+18 and game.affection==1,"hero accepts mild meat and grants affection and bonus")
 	for i in range(1600):
 		if game.phase != "营业": break

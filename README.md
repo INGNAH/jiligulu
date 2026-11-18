@@ -1,12 +1,14 @@
-# 星灯回转锅 · 餐厅核心 v0.3.1
+# 星灯回转锅 · 餐厅核心 v0.3.2
+
+[下载当前 Windows 试玩包](https://github.com/INGNAH/jiligulu/raw/refs/heads/main/releases/StarPot-Buffet-Windows.zip)。本版包含自助餐营业、街区快报、临时餐厅美术和约三头身的像素店长。解压运行 StarPot/StarPot.exe。
 
 Godot 4.6.3 / Windows x86_64 独立游戏原型。当前以可玩经营规则为主，使用程序绘制的占位美术。最终视觉方向为偏像素平面经营场景、二次元角色资料卡与对话立绘。
 
 ## 试玩
 
-GitHub 下载：[v0.3.1 Windows 试玩包](https://github.com/INGNAH/jiligulu/releases/tag/v0.3.1)。下载[试玩 ZIP](https://github.com/INGNAH/jiligulu/raw/refs/heads/main/releases/StarPot-v0.3.1-Windows.zip)，解压运行 `StarPot.exe`。
+已上传的上一版 GitHub 下载：[v0.3.1 Windows 试玩包](https://github.com/INGNAH/jiligulu/releases/tag/v0.3.1)。下载[试玩 ZIP](https://github.com/INGNAH/jiligulu/raw/refs/heads/main/releases/StarPot-v0.3.1-Windows.zip)，解压运行 `StarPot.exe`。
 
-下载 `StarPot-v0.3.1.download` 后，将扩展名改成 `.zip`，解压运行 `StarPot.exe`。也可直接解压 ZIP 文件。不需要联网或安装 Godot。
+当前本地构建：下载 `StarPot-v0.3.2.download` 后，将扩展名改成 `.zip`，解压运行 `StarPot.exe`。也可直接解压 ZIP 文件。不需要联网或安装 Godot。
 
 开发：用 Godot 4.6.3 打开 `hotpot/project.godot`，按 F5，或运行 `godot --path hotpot`。
 
@@ -93,3 +95,9 @@ Windows导出需匹配的官方模板。Windows导出和Linux原生运行分别�
 市场、料理台和开店铃新增库存与备菜计划。按当前餐费预计客流，每客3盘计算总量，已有炖菜与基础成品均计入；六种基础菜按库存均衡补齐。清单扣除现有原料，再按每组3份计算购买数量及费用。可以按清单采购、按计划装盘，多余原料保留。资金不足不会部分采购，重复操作不会超额购买。
 
 开店检查显示现有与建议餐盘数量，以及人手和工资提醒。12盘仍是开门下限，建议数量只作经营参考，不保证口味满足或配送及时。采购和装盘仅在准备期可执行。新增15项检查通过，连同此前115项共130项。
+
+## v0.3.2 跨天营业记录
+
+店长手册与日终结算新增经营记录入口，保留最近30个营业日。可以查看最近7次营业的收入、支出、净收益、客流、销量和按客人数加权的评价，并比较最近两次营业的收入、净收益与客流变化。每天的明细包括当日餐费、桌数、餐带数、菜品销量和分区评价及缺餐等待时间。
+
+记录随三个存档位分别保存；旧档兼容，未记录的历史不会补造。支出按实际付款日计入，包含采购、招聘、装修和工资，不代表已售食材成本。新增18项检查，连同原有130项共148项通过。

@@ -1,5 +1,160 @@
-[gd_resource type="Resource" script_class="" load_steps=2 format=3]
-[ext_resource type="Script" path="res://art/art_pack.gd" id="1"]
+[gd_resource type="Resource" format=3]
+[ext_resource type="Script" path="res://art/art_pack.gd" id="pack"]
+[ext_resource type="Script" path="res://art/sprite_spec.gd" id="sprite"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/table.png" id="tex_table"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/chair.png" id="tex_chair"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/feeder.png" id="tex_feeder"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/kitchen.png" id="tex_kitchen"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/lumi.png" id="tex_lumi"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item0.png" id="tex_item0"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item1.png" id="tex_item1"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item2.png" id="tex_item2"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item3.png" id="tex_item3"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item4.png" id="tex_item4"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item5.png" id="tex_item5"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item6.png" id="tex_item6"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item7.png" id="tex_item7"]
+[ext_resource type="Texture2D" path="res://art/imported/temp01/item8.png" id="tex_item8"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/es.png" id="tx_es"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/ew.png" id="tx_ew"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/floor.png" id="tx_floor"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/manager.png" id="tx_manager"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/ne.png" id="tx_ne"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/ns.png" id="tx_ns"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/nw.png" id="tx_nw"]
+[ext_resource type="Texture2D" path="res://art/imported/temp02/sw.png" id="tx_sw"]
+[sub_resource type="Resource" id="table"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_table")])
+anchor = Vector2(310.0,498.83)
+display_scale = Vector2(0.12903225806451613,0.12903225806451613)
+pixel_art = true
+[sub_resource type="Resource" id="chair"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_chair")])
+anchor = Vector2(320.5,536.67)
+display_scale = Vector2(0.0343213728549142,0.0343213728549142)
+pixel_art = true
+[sub_resource type="Resource" id="feeder"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_feeder")])
+anchor = Vector2(295.0,547.8199999999999)
+display_scale = Vector2(0.06779661016949153,0.06779661016949153)
+pixel_art = true
+[sub_resource type="Resource" id="kitchen"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_kitchen")])
+anchor = Vector2(335.0,598.78)
+display_scale = Vector2(0.2865671641791045,0.2865671641791045)
+pixel_art = true
+[sub_resource type="Resource" id="lumi"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_lumi")])
+anchor = Vector2(836.0,470.5)
+display_scale = Vector2(0.215311004784689,0.215311004784689)
+pixel_art = false
+[sub_resource type="Resource" id="item0"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item0")])
+anchor = Vector2(187.5,239.39999999999998)
+display_scale = Vector2(0.048,0.048)
+pixel_art = true
+[sub_resource type="Resource" id="item1"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item1")])
+anchor = Vector2(207.5,233.39999999999998)
+display_scale = Vector2(0.043373493975903614,0.043373493975903614)
+pixel_art = true
+[sub_resource type="Resource" id="item2"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item2")])
+anchor = Vector2(196.5,238.2)
+display_scale = Vector2(0.04580152671755725,0.04580152671755725)
+pixel_art = true
+[sub_resource type="Resource" id="item3"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item3")])
+anchor = Vector2(209.0,250.2)
+display_scale = Vector2(0.0430622009569378,0.0430622009569378)
+pixel_art = true
+[sub_resource type="Resource" id="item4"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item4")])
+anchor = Vector2(209.0,250.79999999999998)
+display_scale = Vector2(0.0430622009569378,0.0430622009569378)
+pixel_art = true
+[sub_resource type="Resource" id="item5"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item5")])
+anchor = Vector2(202.0,250.2)
+display_scale = Vector2(0.04455445544554455,0.04455445544554455)
+pixel_art = true
+[sub_resource type="Resource" id="item6"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item6")])
+anchor = Vector2(209.0,240.0)
+display_scale = Vector2(0.0430622009569378,0.0430622009569378)
+pixel_art = true
+[sub_resource type="Resource" id="item7"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item7")])
+anchor = Vector2(209.0,250.79999999999998)
+display_scale = Vector2(0.06220095693779904,0.06220095693779904)
+pixel_art = true
+[sub_resource type="Resource" id="item8"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tex_item8")])
+anchor = Vector2(208.5,250.79999999999998)
+display_scale = Vector2(0.06235011990407674,0.06235011990407674)
+pixel_art = true
+[sub_resource type="Resource" id="sp_es"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_es")])
+anchor = Vector2(40.0,40.0)
+display_scale = Vector2(0.5,0.5)
+offset = Vector2(0,-22)
+[sub_resource type="Resource" id="sp_ew"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_ew")])
+anchor = Vector2(40.0,40.0)
+display_scale = Vector2(0.5,0.5)
+offset = Vector2(0,-22)
+[sub_resource type="Resource" id="sp_floor"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_floor")])
+anchor = Vector2(40.0,40.0)
+display_scale = Vector2(0.5,0.5)
+offset = Vector2(0,0)
+[sub_resource type="Resource" id="sp_manager"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_manager")])
+anchor = Vector2(15.0,52)
+display_scale = Vector2(1,1)
+offset = Vector2(0,0)
+[sub_resource type="Resource" id="sp_ne"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_ne")])
+anchor = Vector2(40.0,40.0)
+display_scale = Vector2(0.5,0.5)
+offset = Vector2(0,-22)
+[sub_resource type="Resource" id="sp_ns"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_ns")])
+anchor = Vector2(40.0,40.0)
+display_scale = Vector2(0.5,0.5)
+offset = Vector2(0,-22)
+[sub_resource type="Resource" id="sp_nw"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_nw")])
+anchor = Vector2(40.0,40.0)
+display_scale = Vector2(0.5,0.5)
+offset = Vector2(0,-22)
+[sub_resource type="Resource" id="sp_sw"]
+script = ExtResource("sprite")
+frames = Array[Texture2D]([ExtResource("tx_sw")])
+anchor = Vector2(40.0,40.0)
+display_scale = Vector2(0.5,0.5)
+offset = Vector2(0,-22)
 [resource]
-script = ExtResource("1")
-sprites = {}
+script = ExtResource("pack")
+sprites = {"belt/sw": SubResource("sp_sw"), "belt/nw": SubResource("sp_nw"), "belt/ns": SubResource("sp_ns"), "belt/ne": SubResource("sp_ne"), "character/player/idle": SubResource("sp_manager"), "environment/floor": SubResource("sp_floor"), "belt/ew": SubResource("sp_ew"), "belt/es": SubResource("sp_es"), "furniture/table/0": SubResource("table"), "furniture/table/2": SubResource("table"), "furniture/chair/2": SubResource("chair"), "furniture/feeder": SubResource("feeder"), "furniture/kitchen": SubResource("kitchen"), "portrait/lumi/neutral": SubResource("lumi"), "food/0": SubResource("item0"), "food/1": SubResource("item1"), "food/2": SubResource("item2"), "food/3": SubResource("item3"), "food/4": SubResource("item4"), "food/5": SubResource("item5"), "food/6": SubResource("item6"), "prop/hotpot": SubResource("item7"), "prop/plate": SubResource("item8")}

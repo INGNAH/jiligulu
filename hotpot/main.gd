@@ -9,10 +9,26 @@ signal pause_requested
 @export var auto_load: bool = true
 var save_store=preload("res://systems/save_store.gd").new()
 var save_error=""
+const FILL=[26,42,25,14,46,18,52]
+const TASTE=["鲜香","肉类","海鲜","辣味","清淡","甜酸"]
+const SPECIALS=["香煎霜牛","酸甜萝卜","椒香跳跳虾"]
+const BASE=[1,5,2]
+const FACILITY=["蘸料","饮料","冰淇淋","等候长椅"]
+var facility_kind=0
+var offerings=[true,true,true]
+var kitchen_time=0.0
+var cooked=-1
+var reputation=70
+var event_booked=false
+var bulletin="今天是开业第一天。"
+var waiting=[]
+var lost=0
+var missed_taste=0
 var menu_price=24
 var guest_target=10
 var staff_exp=0
 var staff_trips=0
+var business_history=[]
 var food_served=[0,0,0,0,0,0,0]
 var last_save_ok=true
 @export var art_pack: Resource = preload("res://art/default_pack.tres")
@@ -26,6 +42,7 @@ var build_tool = "table"
 var build_rot = 0
 var build_zone = 0
 var moving_table = -1
+var layout_plans = [null, null, null]
 var layout_history: Array = []
 var tool_buttons: Dictionary = {}
 var build_bar: HBoxContainer
@@ -126,7 +143,7 @@ func _ready():
 	var help = label_at(Vector2(30,65),15)
 	help.text = "WASD 移动 · E 交互 · 1—7 选菜 · Q 放回 · B 布局 · P 暂停 · Esc 关闭"
 	var menu = Button.new()
-	menu.text = "经营手册 / 存档"
+	menu.text = "店长手册 / 存档"
 	menu.position = Vector2(1060,18)
 	menu.pressed.connect(show_menu)
 	ui.add_child(menu)
@@ -158,7 +175,7 @@ func _ready():
 		b.pressed.connect(func(): build_tool=tool[0]; moving_table=-1)
 		build_bar.add_child(b)
 		tool_buttons[tool[0]]=b
-	for item in [["分区",func(): build_zone=(build_zone+1)%3],["旋转 R",func(): build_rot=(build_rot+1)%4],["撤销",undo_layout],["房型",cycle_shape],["还原布局",reset_layout],["完成",toggle_build]]:
+	for item in [["设施",choose_facility],["分区",func(): build_zone=(build_zone+1)%3],["旋转 R",func(): build_rot=(build_rot+1)%4],["撤销",undo_layout],["房型",cycle_shape],["方案",show_layout_plans],["还原布局",reset_layout],["完成",toggle_build]]:
 		var b=Button.new(); b.text=item[0]; b.pressed.connect(item[1]); build_bar.add_child(b)
 	build_info=label_at(Vector2(30,169),16)
 	action_label=label_at(Vector2(30,743),16)
@@ -195,8 +212,9 @@ func refresh():
 	top.text = "星灯回转锅 / 第 %d 天 · %s   金币 %d   收入 %d" % [day,phase,money,income]
 	status.text = toast_text if toast_time > 0 else "布局提示：餐带同色闭环；桌椅邻接同区餐带；补餐点紧邻同区餐带。"
 	var guide = "营业 %d 秒 · 已结账 %d/%d" % [maxi(0,150-int(elapsed)),served,guest_target] if phase=="营业" else "准备期 · 左上采购，左下备菜，左侧铃铛开门"
-	hint.text="手持：%s   |   %s"%["空盘托" if held<0 else dish_name(held),guide]
+	hint.text="手持：%s   |   %s"%["空盘托" if held<0 else SPECIALS[cooked] if cooked>=0 else dish_name(held),guide]
 	action_label.text=nearby_action()
+	if phase=="营业": action_label.text+="　叫号区 %d人等候"%waiting.size()
 	for i in range(slot_buttons.size()):
 		slot_buttons[i].text="%s%d %s ×%d"%["▶" if selected==i else "",i+1,dish_name(i),ready_food[i]]
 		slot_buttons[i].modulate=Color("ffe2a2") if selected==i else Color.WHITE
@@ -205,13 +223,13 @@ func refresh():
 	build_bar.visible=build_mode
 	build_info.visible=build_mode
 	if build_mode:
-		build_info.text="%s · %s区 · 旋转%d° | 左键操作，餐带可拖画 / 右键取消或拆除"%[{"table":"放桌椅","move":"点击桌子，再点新位置","belt":"铺闭环餐带","feeder":"放补餐点","zone":"给桌子或餐带改区","erase":"拆除"}[build_tool],layout.zone_name(build_zone),build_rot*90]
+		build_info.text="%s · %s区 · 旋转%d° | 左键操作，餐带可拖画 / 右键取消或拆除"%[{"facility":FACILITY[facility_kind],"table":"放桌椅","move":"点击桌子，再点新位置","belt":"铺闭环餐带","feeder":"放补餐点","zone":"给桌子或餐带改区","erase":"拆除"}[build_tool],layout.zone_name(build_zone),build_rot*90]
 		action_label.text="B / 完成：退出布局；放置免费。房型切换保留家具，请修复红色提示后营业。"
 
 func nearby_action() -> String:
 	if build_mode: return ""
 	if player.distance_to(Vector2(160,220))<120: return "[E] 打开采购" if phase!="营业" else "商户已收摊"
-	if player.distance_to(Vector2(190,580))<135: return "[E] 拿一盘 %s（剩 %d）"%[dish_name(selected),ready_food[selected]] if phase=="营业" else "[E] 打开料理台"
+	if player.distance_to(Vector2(190,580))<135: return "[C] 现做加单 / [E] 拿 %s（剩 %d）"%[dish_name(selected),ready_food[selected]] if phase=="营业" else "[E] 打开料理台"
 	if player.distance_to(Vector2(160,365))<80: return "[E] 开店 / 招聘 / 岗位安排"
 	if phase=="营业":
 		for i in range(seats.size()):
@@ -248,6 +266,43 @@ func cycle_shape():
 	remember_layout();layout.shape=(layout.shape+1)%3;layout.compile()
 	notify("房型：%s。已有桌椅保留，请移动超出地板的家具。"%["方形","长条","L形"][layout.shape])
 
+func show_layout_plans():
+	if phase!="准备": return
+	clear_panel("布局方案")
+	for slot in range(layout_plans.size()):
+		var plan=layout_plans[slot]
+		var title="方案 %d"%(slot+1)
+		if plan==null:
+			button(title+" · 保存当前布局",store_layout_plan.bind(slot))
+		else:
+			line("%s · %s · %d桌 / %d格餐带"%[title,["方形","长条","L形"][int(plan.shape)],plan.tables.size(),plan.belts.size()])
+			button("使用"+title,apply_layout_plan.bind(slot))
+			button("更新"+title,confirm_plan_update.bind(slot))
+	close_button()
+
+func confirm_plan_update(slot: int):
+	clear_panel("更新方案 %d？"%(slot+1))
+	line("将用当前店铺布局替换这份方案。")
+	button("确认替换",store_layout_plan.bind(slot))
+	button("返回方案",show_layout_plans)
+
+func store_layout_plan(slot: int):
+	if phase!="准备" or slot<0 or slot>=layout_plans.size(): return
+	var previous=layout_plans[slot]
+	layout_plans[slot]=layout.snapshot()
+	if not save_game():
+		layout_plans[slot]=previous
+	show_layout_plans()
+
+func apply_layout_plan(slot: int):
+	if phase!="准备" or slot<0 or slot>=layout_plans.size() or layout_plans[slot]==null: return
+	remember_layout()
+	layout.restore(layout_plans[slot])
+	sync_seats()
+	moving_table=-1
+	panel.hide()
+	notify("已使用方案 %d。可撤销，完成布局后保存。"%(slot+1))
+
 func reset_layout():
 	clear_panel("还原店铺布局？")
 	line("将替换当前桌椅、餐带和补餐点，恢复方形双区布局。资金与食材保留。可以用撤销恢复。")
@@ -263,6 +318,7 @@ func edit_cell(c: Vector2i):
 	remember_layout()
 	var success=true
 	match build_tool:
+		"facility": success=layout.place_facility(c,facility_kind)
 		"table": success=layout.place_table(c,build_rot,build_zone)
 		"move":
 			if moving_table>=0:
@@ -293,7 +349,7 @@ func _process(dt):
 	var before_player=player
 	var before_staff=staff_pos
 	toast_time -= dt
-	if not panel.visible and not furniture_mode and not build_mode:
+	if not panel.visible and not furniture_mode and not build_mode and kitchen_time<=0:
 		var v = Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))-float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
 		var next = player + v.normalized()*230*dt
 		next.x = clampf(next.x,80,1190)
@@ -332,7 +388,10 @@ func _unhandled_key_input(e):
 		panel.hide()
 		furniture_mode = false
 	elif e.keycode >= KEY_1 and e.keycode <= KEY_7: selected = e.keycode-KEY_1
+	elif kitchen_time>0: return
+	elif e.keycode==KEY_C and phase=="营业" and not panel.visible and player.distance_to(Vector2(190,580))<135: kitchen_orders()
 	elif e.keycode == KEY_Q and held >= 0:
+		cooked=-1
 		ready_food[held] += 1
 		held = -1
 	elif e.keycode == KEY_F and phase != "营业" and decor:
@@ -342,6 +401,15 @@ func _unhandled_key_input(e):
 	elif e.keycode == KEY_E and not panel.visible: interact()
 
 func _unhandled_input(e):
+	if phase=="营业" and not panel.visible and e is InputEventMouseButton and e.button_index==MOUSE_BUTTON_LEFT and e.pressed:
+		for i in range(guests.size()-1,-1,-1):
+			var g=guests[i]
+			if g!=null and e.position.distance_to(g.position+Vector2(0,-19))<26:
+				clear_panel("莱恩" if g.special else "客人 %d"%(g.ticket+1))
+				line("喜好："+TASTE[g.wish]+" · "+ING[g.wish])
+				line("饱腹 %d / %d"%[g.full,g.capacity])
+				if g.order>=0: line("加单："+SPECIALS[g.order]+("（已送达）" if g.bonus else ""))
+				close_button();return
 	if build_mode and not panel.visible and e is InputEventMouseButton and e.pressed:
 		var c=layout.cell(e.position)
 		if e.button_index==MOUSE_BUTTON_LEFT:
@@ -373,10 +441,12 @@ func interact():
 		return
 	if phase == "营业":
 		if held >= 0:
-			for i in range(seats.size()):
-				if guests[i] != null and player.distance_to(seats[i]) < 65:
-					serve_guest(i)
-					return
+			if cooked>=0:
+				for i in range(guests.size()):
+					var g=guests[i]
+					if g!=null and g.order==cooked and not g.bonus and g.trip.is_empty() and player.distance_to(seats[i])<65:
+						serve_guest(i);return
+				notify("请到点了这道菜的客人桌旁，等客人回座后送餐。");return
 			for r in range(layout.routes.size()):
 				for f in layout.routes[r].feeders:
 					if player.distance_to(layout.center(f.cell))<65:
@@ -477,7 +547,7 @@ func show_kitchen():
 	clear_panel("料理台 · 备菜与火候")
 	button("按预计客流制定备菜计划",show_preparation)
 	for i in range(6):
-		button("装盘 %s  原料 %d → 待上 %d" % [ING[i],raw[i],ready_food[i]],func(): prepare(i); show_kitchen())
+		button("装盘 %s（饱腹%d） 原料%d / 待上%d" % [ING[i],FILL[i],raw[i],ready_food[i]],func(): prepare(i); show_kitchen())
 	button("全部基础食材批量装盘",func(): prepare_all();show_kitchen())
 	button("清炖霜牛：牛肉 + 豆腐  [熟练 %d/3]" % mastery,show_cook)
 	line("清炖霜牛标签：肉类 · 清淡。勇者喜欢它。\n装盘、烹饪在开店前完成；营业时 E 取选中菜。")
@@ -524,11 +594,41 @@ func finish_cook(success: bool):
 	notify("炖菜完成！熟练三次后解锁快捷制作。" if success else "火候偏了，改成普通牛肉盘。")
 	cooking = false
 
+func choose_facility():
+	clear_panel("自取与等候设施")
+	for j in range(FACILITY.size()):
+		button(FACILITY[j],func(): facility_kind=j;build_tool="facility";panel.hide())
+	close_button()
+
+func show_news():
+	clear_panel("街区快报")
+	line(bulletin)
+	line("店铺口碑 %d / 100　今晚预计 %d 位来客"%[reputation,expected_guests()])
+	if phase=="准备":
+		if event_booked: line("今晚活动：人气 coser 到店")
+		else: button("邀请 coser · 40 金 / 增加 5 位来客",book_event)
+	close_button()
+
+func book_event():
+	if phase!="准备" or event_booked: return
+	if money<40: notify("活动费用需要40金。");return
+	money-=40;spending+=40;event_booked=true
+	show_news()
+
+func configure_menu():
+	clear_panel("今晚的特别菜单")
+	for j in range(SPECIALS.size()):
+		button(("%s · "%("供应" if offerings[j] else "下架"))+SPECIALS[j],func(): offerings[j]=not offerings[j];configure_menu())
+	line("现做一份消耗一盘对应备菜。客人进餐后才会加单。")
+	close_button()
+
 func show_open():
 	clear_panel("星灯营业铃")
-	line("一晚150秒。吃3盘收全额，未吃饱但吃过收半价，没吃到不收费。额外喜好未满足不扣分。")
+	line("每位入座客人支付同一餐费。饱腹离席，完成加单另收小费。")
+	button("街区快报与活动",show_news)
+	button("选择特别菜单",configure_menu)
 	button("餐费 %d 金 / 预计 %d 客（点击调整）"%[menu_price,expected_guests()],cycle_price)
-	line("18金/12客 · 24金/10客 · 30金/8客。高价客人对服务要求更高。勇者想吃清淡肉。")
+	line("基础客流随餐费变化，昨日口碑和今日活动会影响到店人数。")
 	layout.compile()
 	line("布局：%d 张桌 / %d 座 / %d 条餐带。"%[layout.tables.size(),seats.size(),layout.routes.size()])
 	if not layout.errors.is_empty(): line("必须修复："+str(layout.errors[0]))
@@ -547,7 +647,7 @@ func show_open():
 	close_button()
 
 func expected_guests() -> int:
-	return 12 if menu_price==18 else 8 if menu_price==30 else 10
+	return maxi(3,(12 if menu_price==18 else 8 if menu_price==30 else 10)+roundi((reputation-70)/6.0)+(5 if event_booked else 0))
 
 func cycle_price():
 	if phase!="准备": return
@@ -588,12 +688,28 @@ func start_business() -> bool:
 	phase = "营业"
 	elapsed = 0
 	spawned = 0
+	waiting.clear();lost=0;missed_taste=0;cooked=-1
 	spawn_clock = 0
 	staff_clock = 0
 	panel.hide()
 	spawn_guest()
 	notify("开门啦！先到料理台取菜，给餐带补货。勇者将第三个到来。")
 	return true
+
+func kitchen_orders():
+	clear_panel("后厨 · 现做加单")
+	for j in range(SPECIALS.size()):
+		var count=0
+		for g in guests:
+			if g!=null and g.order==j and not g.bonus: count+=1
+		if count>0: button("%s ×%d · 使用一盘%s"%[SPECIALS[j],count,ING[BASE[j]]],cook_order.bind(j))
+	close_button()
+
+func cook_order(j:int):
+	if phase!="营业" or held>=0: notify("先腾出双手。");return
+	if ready_food[BASE[j]]<=0: notify("对应备菜已用完。");return
+	ready_food[BASE[j]]-=1;held=BASE[j];cooked=j;kitchen_time=2.5;panel.hide()
+	notify("正在制作"+SPECIALS[j]+"…")
 
 func take_food():
 	if held >= 0: notify("手里已有菜，Q 放回备餐区。") ; return
@@ -603,6 +719,13 @@ func take_food():
 
 func spawn_guest():
 	if spawned>=guest_target: return
+	var ticket=spawned
+	spawned+=1
+	waiting.append({"ticket":ticket,"patience":18+(ticket%4)*5+maxi(0,reputation-60)/4.0})
+	seat_next()
+
+func seat_next():
+	if waiting.is_empty(): return
 	var chosen=-1
 	var lowest=10000
 	for i in range(seats.size()):
@@ -613,8 +736,9 @@ func spawn_guest():
 	if chosen<0: return
 	var z=layout.tables[seat_tables[chosen]].zone
 	zone_stats[z].arrivals+=1
-	guests[chosen]={"wish":spawned%6,"special":spawned==2,"eaten":0,"wait":0.0,"bonus":false,"score":80-maxi(0,menu_price-24),"last_meal":0.0,"hungry":0.0}
-	spawned+=1
+	var ticket=int(waiting.pop_front().ticket)
+	var wish=1 if ticket==2 else ticket%6
+	guests[chosen]={"ticket":ticket,"position":seats[chosen],"trip":[],"visited":[],"full":0,"capacity":68+(ticket%4)*12,"order":-1,"order_at":0.0,"liked":false,"wish":wish,"special":ticket==2,"eaten":0,"wait":0.0,"bonus":false,"score":80-maxi(0,menu_price-24),"last_meal":0.0,"hungry":0.0}
 
 func plate_pos(t: float, r: int=0) -> Vector2:
 	if r<0 or r>=layout.routes.size(): return Vector2.ZERO
@@ -636,24 +760,60 @@ func add_plate(r: int, food: int, index: int) -> bool:
 
 func tick_business(dt: float):
 	elapsed += dt
+	if kitchen_time>0:
+		kitchen_time=maxf(0,kitchen_time-dt)
+		if kitchen_time==0: notify("出锅了，送到点单客人桌边。")
 	spawn_clock += dt
-	if spawn_clock >= 9:
+	if spawn_clock >= (5.0 if event_booked else 8.0)+float(spawned%3):
 		spawn_clock = 0
 		spawn_guest()
+	seat_next()
+	var benches=0
+	for f in layout.facilities:
+		if f.kind==3: benches+=1
+	for j in range(waiting.size()-1,-1,-1):
+		waiting[j].patience-=dt*(0.55 if j<benches*2 else 1.0)
+		if waiting[j].patience<=0: waiting.remove_at(j);lost+=1
 	for p in plates: p.t=fposmod(p.t+dt*1.8,float(layout.routes[p.route].cells.size()))
 	for i in range(seats.size()):
 		var g = guests[i]
 		if g == null: continue
-		g.wait+=dt;g.last_meal+=dt
+		g.wait+=dt
+		if not g.trip.is_empty():
+			g.position=g.position.move_toward(g.trip[0],dt*110)
+			if g.position==g.trip[0]: g.trip.pop_front()
+			if g.trip.is_empty() and g.visited.back()==2: g.full+=10
+			continue
+		var kind=0 if g.eaten==0 else 2 if g.full>=g.capacity*0.7 else 1
+		if kind not in g.visited and (g.ticket+kind)%3!=1:
+			g.visited.append(kind)
+			var best=[]
+			for f in layout.facilities:
+				if f.kind!=kind: continue
+				var route=layout.path(layout.cell(seats[i]),Vector2i(f.x,f.y))
+				if not route.is_empty() and (best.is_empty() or route.size()<best.size()): best=route
+			if best.size()>1:
+				for cell in best: g.trip.append(layout.center(cell))
+				best.reverse()
+				for cell in best: g.trip.append(layout.center(cell))
+				continue
+		g.last_meal+=dt
 		var table=layout.tables[seat_tables[i]]
 		var r=layout.route_for_table(table)
-		if g.eaten<3 and g.last_meal>10: g.hungry+=dt
-		if r>=0 and g.eaten<3 and g.last_meal>=5:
+		if g.full<g.capacity and g.last_meal>10: g.hungry+=dt
+		if r>=0 and g.full<g.capacity and g.last_meal>=5:
 			var target=layout.center(layout.routes[r].cells[layout.pickup_index(table,r)])
 			for j in range(plates.size()-1,-1,-1):
+				if plates[j].food!=g.wish and g.last_meal<7: continue
 				if plates[j].route==r and plate_pos(plates[j].t,r).distance_to(target)<20:
-					food_served[plates[j].food]+=1;g.eaten+=1;g.last_meal=0;plates.remove_at(j);break
-		if (g.eaten>=3 and (not g.special or g.wait>55 or g.bonus)) or g.wait>65: checkout(i)
+					var food=int(plates[j].food)
+					g.full+=FILL[food];g.liked=g.liked or food==g.wish
+					if g.eaten==0 and (g.special or g.ticket%4!=3):
+						for offset in range(3):
+							var recipe=(BASE.find(g.wish)+3+offset)%3 if g.wish in BASE else (g.ticket+offset)%3
+							if offerings[recipe]: g.order=recipe;g.order_at=g.wait;break
+					food_served[food]+=1;g.eaten+=1;g.last_meal=0;plates.remove_at(j);break
+		if (g.full>=g.capacity and (g.order<0 or g.bonus or g.wait-g.order_at>12)) or g.wait>65: checkout(i)
 	if employee: tick_staff(dt)
 	if elapsed>=150 or served>=guest_target: end_day()
 
@@ -715,12 +875,13 @@ func tick_staff(dt: float):
 
 func serve_guest(i: int) -> bool:
 	var g = guests[i]
-	if g == null or held < 0: return false
-	var match_food = (held in [1,6]) if g.special else held == g.wish
+	if g == null or held < 0 or kitchen_time>0: return false
+	var match_food = cooked>=0 and cooked==g.order and g.trip.is_empty()
 	if g.bonus or not match_food:
 		notify("已满足点单。" if g.bonus else "不是想要的菜，食物仍留在手里。")
 		return false
 	g.bonus = true
+	g.full+=FILL[held];g.liked=true;cooked=-1
 	food_served[held]+=1
 	g.eaten += 1
 	g.last_meal = 0
@@ -739,11 +900,12 @@ func serve_guest(i: int) -> bool:
 func checkout(i: int):
 	var g = guests[i]
 	if g == null: return
-	var fee = menu_price if g.eaten >= 3 else int(menu_price/2) if g.eaten > 0 else 0
+	var fee = menu_price
 	money += fee
 	income += fee
 	served += 1
-	var score=clampi(int(g.score)-(3-mini(3,g.eaten))*20-int(g.hungry/3)+(5 if decor else 0),0,100)
+	if not g.liked: missed_taste+=1
+	var score=clampi(int(g.score)+(10 if g.liked else -18)-(20 if g.full<g.capacity else 0)-int(g.hungry/3)+(5 if decor else 0),0,100)
 	satisfaction+=score
 	var z=layout.tables[seat_tables[i]].zone
 	zone_stats[z].visits+=1;zone_stats[z].score+=score;zone_stats[z].hungry+=g.hungry;zone_stats[z].meals+=g.eaten
@@ -764,6 +926,18 @@ func end_day():
 	if held >= 0:
 		ready_food[held] += 1
 		held = -1
+	lost+=waiting.size();waiting.clear()
+	var rating=int(float(satisfaction)/maxi(1,served))
+	var narrow_menu=served>=3 and food_served.count(0)>=5
+	reputation=clampi(roundi((reputation+rating)*0.5)-mini(8,lost)-(5 if narrow_menu else 0),0,100)
+	bulletin="第%d夜餐后快报 · %d位入座，%d位未等到座位。客评%d分。%s"%[day,served,lost,rating,"有%d位客人没吃到偏好的菜。"%missed_taste if missed_taste else "客人们都尝到了喜欢的菜。"]
+	var variety=0
+	for count in food_served:
+		if count>0: variety+=1
+	bulletin+="\n餐后留言："+("想吃的菜等了好久，下次希望能多几种。" if missed_taste>served/2 else "今天吃到了喜欢的菜，下次还想来。")
+	bulletin+="\n售出%d种菜 · 收入%d金 / 支出%d金 · 加单小费%d金。"%[variety,income,spending,tips]
+	if narrow_menu: bulletin+="\n不少客人希望餐带上多一些选择。"
+	event_booked=false;cooked=-1;kitchen_time=0
 	phase = "结算"
 	summary = "接待 %d 位客人\n营业收入 %d（含小费 %d）\n采购 / 招聘 / 装修 / 工资 %d\n当日净收益 %d\n平均评价 %d / 100\n勇者好感 %d · %s\n剩余食材和餐盘保留到明天。" % [served,income,tips,spending,income-spending,int(float(satisfaction)/maxi(1,served)),affection,"点单完成" if special_done else "期待下次点单"]
 	for z in range(3):
@@ -771,6 +945,11 @@ func end_day():
 		if stat.visits>0: summary+="\n%s区：%d客 / 评价%d / 缺餐等待%.0f秒"%[layout.zone_name(z),stat.visits,int(float(stat.score)/stat.visits),stat.hungry]
 	summary+="\n餐费%d金 · 吃掉%d盘"%[menu_price,food_served.reduce(func(a,b):return a+b,0)]
 	if employee: summary+="\n露米完成%d趟补餐 · 经验%d · Lv.%d"%[staff_trips,staff_exp,staff_level()]
+	business_history=preload("res://systems/ledger.gd").record(business_history,{
+		"day":day,"income":income,"spending":spending,"tips":tips,"served":served,
+		"score_total":satisfaction,"plates":food_served.reduce(func(a,b):return a+b,0),
+		"price":menu_price,"tables":layout.tables.size(),"routes":layout.routes.size(),
+		"dishes":food_served.duplicate(),"zones":zone_stats.duplicate(true)})
 	save_game()
 	show_summary()
 
@@ -782,7 +961,41 @@ func show_summary():
 		if food_served[i]>0: dishes.append("%s %d盘"%[dish_name(i),food_served[i]])
 	if not dishes.is_empty(): line("菜品销量："+" / ".join(dishes))
 	if not last_save_ok: line("存档未成功："+save_error)
+	button("街区快报",show_news)
+	button("查看历日经营记录",show_history)
 	button("收拾好，迎接下一天",next_day)
+
+func show_history():
+	clear_panel("经营记录 · 最近30个营业日")
+	if business_history.is_empty():
+		line("尚无营业记录。完成一次营业后自动记账；旧版本未记录的日期不会补造数据。")
+	else:
+		var totals=preload("res://systems/ledger.gd").totals(business_history)
+		line("最近%d次营业：收入%d / 支出%d / 净收益%d金。
+接待%d客，吃掉%d盘，客均评价%d。"%[totals.days,totals.income,totals.spending,totals.profit,totals.served,totals.plates,totals.rating])
+		line("支出按实际付款日计入，含采购、招聘、装修和工资；并非已售食材的成本。")
+		if business_history.size()>1:
+			var current=business_history[-1];var previous=business_history[-2]
+			line("最近两次对比：收入%+d / 净收益%+d / 客流%+d。"%[current.income-previous.income,(current.income-current.spending)-(previous.income-previous.spending),current.served-previous.served])
+		for i in range(business_history.size()-1,-1,-1):
+			var entry=business_history[i]
+			button("第%d天 · 收%d / 支%d / 净%d · %d客"%[entry.day,entry.income,entry.spending,entry.income-entry.spending,entry.served],func(): show_history_day(entry))
+	if phase=="结算": button("返回本日结算",show_summary)
+	close_button()
+
+func show_history_day(entry: Dictionary):
+	clear_panel("第%d天 · 营业明细"%entry.day)
+	line("餐费%d金 · %d桌 / %d条餐带
+接待%d客 · 吃掉%d盘
+收入%d（含小费%d） / 支出%d
+净收益%d金 · 平均评价%d"%[entry.price,entry.tables,entry.routes,entry.served,entry.plates,entry.income,entry.tips,entry.spending,entry.income-entry.spending,int(float(entry.score_total)/maxi(1,entry.served))])
+	for i in range(7):
+		if entry.dishes[i]>0: line("%s：%d盘"%[dish_name(i),entry.dishes[i]])
+	for z in range(3):
+		var stat=entry.zones[z]
+		if stat.visits>0: line("%s区：%d客 / 评价%d / 缺餐等待%.0f秒"%[layout.zone_name(z),stat.visits,int(float(stat.score)/stat.visits),stat.hungry])
+	button("返回经营记录",show_history)
+	close_button()
 
 func next_day():
 	if phase!="结算": return
@@ -802,7 +1015,7 @@ func next_day():
 	save_game()
 
 func snapshot() -> Dictionary:
-	return {"version":3,"layout":layout.snapshot(),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
+	return {"reputation":reputation,"bulletin":bulletin,"event_booked":event_booked,"offerings":offerings.duplicate(),"version":4,"layout_plans":layout_plans.duplicate(true),"history":business_history.duplicate(true),"layout":layout.snapshot(),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
 
 func save_game() -> bool:
 	if phase=="营业":
@@ -822,6 +1035,9 @@ func load_game() -> bool:
 	return true
 
 func apply_save(data: Dictionary):
+	reputation=int(data.get("reputation",70));bulletin=data.get("bulletin","今天是新的营业日。");event_booked=data.get("event_booked",false);offerings=data.get("offerings",[true,true,true]).duplicate();cooked=-1
+	layout_plans=data.get("layout_plans",[null,null,null]).duplicate(true)
+	business_history=data.get("history",[]).duplicate(true)
 	if data.has("layout"): layout.restore(data.layout)
 	else: layout.reset()
 	staff_zone=clampi(int(data.get("staff_zone",-1)),-1,2)
@@ -841,9 +1057,11 @@ func apply_save(data: Dictionary):
 
 func show_menu():
 	if build_mode: toggle_build()
-	clear_panel("掌柜手册 · 查看时暂停营业")
-	line("① 左上集市采购 → 左下料理台装盘。\n② 右侧铃铛开店，可招聘露米往返补餐。\n③ 按 1—7 选菜，料理台 E 拿菜。\n④ 走近彩色补餐点 E 上餐，客人自动取餐。\n⑤ 看气泡，亲自送喜欢的菜赚小费。\n⑥ 打烊看账本，再迎接下一天。\n\n清炖霜牛成功三次解锁快捷制作。\n准备期按 B 布局，左键放置，R 旋转，右键拆除。\n餐带同区闭环；桌子与补餐点紧邻同区餐带。\n露米可自动巡区，或指定负责某一区。\n准备期可手动保存，打烊自动保存。")
+	clear_panel("店长手册 · 查看时暂停营业")
+	line("① 左上集市采购 → 左下料理台装盘。\n② 右侧铃铛开店，可招聘露米往返补餐。\n③ 按 1—7 选菜，料理台 E 拿菜。\n④ 走近彩色补餐点 E 上餐，客人自动取餐。\n⑤ 看加单气泡，到料理台按 C 现做，回桌旁 E 送餐。\n⑥ 打烊看账本，再迎接下一天。\n\n清炖霜牛成功三次解锁快捷制作。\n准备期按 B 布局，左键放置，R 旋转，右键拆除。\n餐带同区闭环；桌子与补餐点紧邻同区餐带。\n露米可自动巡区，或指定负责某一区。\n准备期可手动保存，打烊自动保存。")
 	if phase=="结算": button("查看打烊账本 / 下一天",show_summary)
+	button("街区快报",show_news)
+	button("查看历日经营记录",show_history)
 	button("保存进度",func():
 		if save_game(): notify("进度已保存。"))
 	if not pause_requested.get_connections().is_empty(): button("暂停 / 设置 / 返回主菜单",func(): pause_requested.emit())
@@ -915,6 +1133,13 @@ func draw_layout():
 			if not layout.floor_at(c): draw_rect(Rect2(p-Vector2.ONE*20,Vector2.ONE*40),Color("283541"))
 			else: art.draw(self,["environment/floor"],p,art_clock)
 			if layout.floor_at(c) and build_mode: draw_rect(Rect2(p-Vector2.ONE*20,Vector2.ONE*40),Color(1,1,1,0.18),false,1)
+	for f in layout.facilities:
+		var pos=layout.center(Vector2i(f.x,f.y))
+		block(Rect2(pos-Vector2(17,9),Vector2(34,18)),12,Color("77acac"))
+		text_at(pos+Vector2(-18,-12),FACILITY[int(f.kind)],13)
+	for q in range(mini(5,waiting.size())):
+		person(layout.center(Vector2i(20-q,11)),COLORS[int(waiting[q].ticket)%6],0)
+	text_at(layout.center(Vector2i(18,11)),"叫号区 %d"%waiting.size(),14)
 	var objects=[]
 	for c in layout.belts: objects.append({"y":layout.center(c).y,"kind":"belt","data":c})
 	for t in layout.tables: objects.append({"y":layout.center(layout.body(t)[-1]).y+17,"kind":"table","data":t})
@@ -922,7 +1147,7 @@ func draw_layout():
 		for c in layout.chairs(t): objects.append({"y":layout.center(c).y-5,"kind":"chair","data":c,"rot":t.rot})
 	for f in layout.feeders: objects.append({"y":layout.center(Vector2i(f.x,f.y)).y,"kind":"feeder","data":f})
 	for i in range(seats.size()):
-		if guests[i]!=null: objects.append({"y":seats[i].y,"kind":"guest","data":i})
+		if guests[i]!=null: objects.append({"y":guests[i].position.y,"kind":"guest","data":i})
 	objects.append({"y":player.y,"kind":"player","data":0})
 	if employee: objects.append({"y":staff_pos.y,"kind":"staff","data":0})
 	for plate in plates:
@@ -932,10 +1157,11 @@ func draw_layout():
 	# Bubbles stay above scenery, independently of body occlusion.
 	for i in range(seats.size()):
 		if guests[i]==null: continue
-		var g=guests[i];var pos=seats[i]
+		var g=guests[i];var pos=g.position
+		if g.order<0 or not g.trip.is_empty(): continue
 		var bubble=pos+Vector2(-54,-72 if i%2==0 else -103)
 		draw_style_box(bubble_style(),Rect2(bubble,Vector2(109,26)))
-		text_at(bubble+Vector2(4,18),"谢谢！" if g.bonus else "莱恩·清淡肉" if g.special else "想吃 "+ING[g.wish],12,Color("51444b"))
+		text_at(bubble+Vector2(4,18),"谢谢！" if g.bonus else SPECIALS[g.order],12,Color("51444b"))
 	if build_mode:
 		var c=layout.cell(get_global_mouse_position())
 		if build_tool=="table" or (build_tool=="move" and moving_table>=0):
@@ -999,8 +1225,8 @@ func draw_depth_object(obj: Dictionary):
 			text_at(q+Vector2(-11,-19),"补",19,Color("293a41"))
 		"guest":
 			var i=obj.data;var g=guests[i]
-			if not art.draw(self,["character/hero/sit","character/hero/idle"] if g.special else ["character/guest_%d/sit"%(g.wish%3),"character/guest_%d/idle"%(g.wish%3)],seats[i],art_clock):
-				person(seats[i],Color("6b92b5") if g.special else COLORS[g.wish],i%2)
+			if not art.draw(self,["character/hero/sit","character/hero/idle"] if g.special else ["character/guest_%d/sit"%(g.wish%3),"character/guest_%d/idle"%(g.wish%3)],g.position,art_clock):
+				person(g.position,Color("6b92b5") if g.special else COLORS[g.wish],i%2)
 		"staff":
 			if not art.draw(self,actor_keys("lumi",staff_animation_name()),staff_pos,art.actor_seconds("lumi")):
 				person(staff_pos,Color("b5a1d5"),1)

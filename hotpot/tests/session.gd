@@ -98,7 +98,7 @@ func run():
 	var eaten=app.game.food_served.reduce(func(a,b):return a+b,0)
 	check(app.game.served==8 and app.game.phase=="结算","premium session completes all eight guests")
 	check(eaten+remaining==initial,"sales report and remaining stock conserve all food")
-	check(app.game.money==cash+app.game.income-app.game.spending and app.game.income%15==0,"premium full/half meals reconcile with wage and cash")
+	check(app.game.money==cash+app.game.income-app.game.spending and app.game.income==app.game.served*app.game.menu_price+app.game.tips,"uniform buffet fees reconcile with wage and cash")
 	var settled=app.game.money;app.game.end_day()
 	check(app.game.money==settled,"repeated closing cannot charge wages or pay meals twice")
 	app.game.save_game();app.game.menu_price=18;app.game.staff_exp=0;app.game.load_game()
