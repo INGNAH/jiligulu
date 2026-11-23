@@ -72,7 +72,7 @@ var decor_pos = Vector2(1080, 600)
 var phase = "准备"
 var selected = 0
 var held = -1
-var player = Vector2(630,600)
+var player = Vector2(418,281)
 var plates: Array = []
 var guests: Array = []
 var elapsed = 0.0
@@ -101,6 +101,70 @@ var furniture_mode = false
 var seats: Array = []
 var seat_tables: Array = []
 
+const CORNER="res://art/corner/"
+const ROOM=preload(CORNER+"room.png")
+const BOARDS=preload(CORNER+"floor.png")
+const MANAGER=preload(CORNER+"manager.png")
+const DINER=preload(CORNER+"diner.png")
+const TABLE=preload(CORNER+"table.png")
+const CHAIR=preload(CORNER+"chair.png")
+const SERVICE={
+	"hotpot":preload("res://art/corner/service/hotpot.png"),
+	"plate":preload("res://art/corner/service/plate.png"),
+	"feeder":preload("res://art/corner/service/feeder.png"),
+	"market":preload("res://art/corner/service/market.png"),
+	"kitchen":preload("res://art/corner/service/kitchen.png"),
+	"bell":preload("res://art/corner/service/bell.png"),
+	"sauce":preload("res://art/corner/service/sauce.png"),
+	"drink":preload("res://art/corner/service/drink.png"),
+	"ice":preload("res://art/corner/service/ice.png"),
+	"food0":preload("res://art/corner/service/food0.png"),
+	"food1":preload("res://art/corner/service/food1.png"),
+	"food2":preload("res://art/corner/service/food2.png"),
+	"food3":preload("res://art/corner/service/food3.png"),
+	"food4":preload("res://art/corner/service/food4.png"),
+	"food5":preload("res://art/corner/service/food5.png"),
+	"food6":preload("res://art/corner/service/food6.png"),
+	"bench":preload("res://art/corner/service/bench.png"),
+	"flowers":preload("res://art/corner/service/flowers.png"),
+}
+var conveyor_tiles={}
+const VIEW_CENTER=Vector2(510,510)
+var view_focus=Vector2(390,250)
+var view_zoom=3.8
+
+func view_ground(screen:Vector2)->Vector2:
+	return (screen-VIEW_CENTER)/view_zoom+view_focus
+
+func update_view(dt:float):
+	var target=player
+	if build_mode:
+		var pan=Input.get_vector("ui_left","ui_right","ui_up","ui_down")
+		var mouse=get_viewport().get_mouse_position()
+		if mouse.x<35: pan.x=-1
+		if mouse.x>1245: pan.x=1
+		if mouse.y<35: pan.y=-1
+		if mouse.y>765: pan.y=1
+		target=view_focus+pan*dt*160
+	var zoom_target=2.5 if build_mode else 3.8
+	if not build_mode and phase=="营业":
+		var nearest=82.0
+		for i in guests.size():
+			if guests[i]==null or not guests[i].trip.is_empty(): continue
+			var cells=layout.body(layout.tables[seat_tables[i]])
+			var middle=(layout.center(cells[0])+layout.center(cells[1]))*0.5
+			var distance=player.distance_to(middle)
+			if distance>=nearest: continue
+			nearest=distance
+			var weight=1.0-smoothstep(56.0,82.0,distance)
+			target=player.lerp(middle+Vector2(0,-12),0.8*weight)
+			zoom_target=lerpf(3.8,3.64,weight)
+	view_zoom=lerpf(view_zoom,zoom_target,1-exp(-dt*12)) if not build_mode else zoom_target
+	target=target.clamp(Vector2(74,198),Vector2(1170,650))
+	view_focus=target if build_mode else view_focus.lerp(target,1-exp(-dt*12))
+	queue_redraw()
+
+
 func _ready():
 	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	art.configure(art_pack)
@@ -109,7 +173,7 @@ func _ready():
 	theme.default_font = font
 	theme.default_font_size = 17
 	var card = StyleBoxFlat.new()
-	card.bg_color = Color("303b49")
+	card.bg_color = Color("49374e")
 	card.corner_radius_top_left = 16
 	card.corner_radius_top_right = 16
 	card.corner_radius_bottom_left = 16
@@ -120,7 +184,7 @@ func _ready():
 	card.content_margin_bottom = 16
 	theme.set_stylebox("panel", "PanelContainer", card)
 	var normal = StyleBoxFlat.new()
-	normal.bg_color = Color("46596a")
+	normal.bg_color = Color("655271")
 	normal.content_margin_top = 8
 	normal.content_margin_bottom = 8
 	normal.corner_radius_top_left = 6
@@ -129,17 +193,21 @@ func _ready():
 	normal.corner_radius_bottom_right = 6
 	theme.set_stylebox("normal", "Button", normal)
 	var hover = normal.duplicate()
-	hover.bg_color = Color("637e8b")
+	hover.bg_color = Color("887194")
 	theme.set_stylebox("hover", "Button", hover)
 	theme.set_stylebox("pressed", "Button", hover)
+	normal.bg_color=Color("ffe8d9e8")
+	hover.bg_color=Color("ffdfaa")
+	theme.set_color("font_color","Button",Color("573b58"))
+	theme.set_color("font_hover_color","Button",Color("573b58"))
 	ui = Control.new()
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.theme = theme
 	add_child(ui)
 	top = label_at(Vector2(30,18),24)
-	hint = label_at(Vector2(30,720),17)
-	status = label_at(Vector2(30,768),15)
+	hint = label_at(Vector2(24,94),17)
+	status = label_at(Vector2(24,154),15)
 	var help = label_at(Vector2(30,65),15)
 	help.text = "WASD 移动 · E 交互 · 1—7 选菜 · Q 放回 · B 布局 · P 暂停 · Esc 关闭"
 	var menu = Button.new()
@@ -169,7 +237,7 @@ func _ready():
 	build_bar.position = Vector2(30,108)
 	build_bar.add_theme_constant_override("separation",6)
 	ui.add_child(build_bar)
-	for tool in [["table","放桌椅"],["move","移动"],["belt","铺餐带"],["feeder","补餐点"],["zone","改分区"],["erase","拆除"]]:
+	for tool in [["window","出餐窗"],["wall","隔墙"],["aisle","走道"],["table","放桌椅"],["move","移动"],["belt","铺餐带"],["feeder","补餐点"],["zone","改分区"],["erase","拆除"]]:
 		var b = Button.new()
 		b.text = tool[1]
 		b.pressed.connect(func(): build_tool=tool[0]; moving_table=-1)
@@ -178,25 +246,60 @@ func _ready():
 	for item in [["设施",choose_facility],["分区",func(): build_zone=(build_zone+1)%3],["旋转 R",func(): build_rot=(build_rot+1)%4],["撤销",undo_layout],["房型",cycle_shape],["方案",show_layout_plans],["还原布局",reset_layout],["完成",toggle_build]]:
 		var b=Button.new(); b.text=item[0]; b.pressed.connect(item[1]); build_bar.add_child(b)
 	build_info=label_at(Vector2(30,169),16)
-	action_label=label_at(Vector2(30,743),16)
+	action_label=label_at(Vector2(24,124),16)
 	var slots=HBoxContainer.new()
-	slots.position=Vector2(30,685)
-	slots.add_theme_constant_override("separation",6)
+	slots.position=Vector2(294,692)
+	slots.add_theme_constant_override("separation",8)
 	ui.add_child(slots)
 	for i in range(7):
 		var b=Button.new()
-		b.add_theme_font_size_override("font_size",14)
-		b.custom_minimum_size=Vector2(163,30)
+		b.add_theme_font_size_override("font_size",17)
+		b.custom_minimum_size=Vector2(92,90)
+		b.icon=SERVICE["food"+str(i)]
+		b.expand_icon=true
+		b.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
+		b.add_theme_constant_override("icon_max_width",50)
+		b.add_theme_stylebox_override("normal",hud_chip())
+		b.add_theme_stylebox_override("hover",hud_chip(true))
+		b.add_theme_stylebox_override("pressed",hud_chip(true))
+		b.add_theme_stylebox_override("hover_pressed",hud_chip(true))
+		b.toggle_mode=true
+		var shortcut=Label.new()
+		shortcut.text=str(i+1)
+		shortcut.position=Vector2(7,4)
+		shortcut.add_theme_font_size_override("font_size",14)
+		shortcut.add_theme_color_override("font_color",Color("795570"))
+		shortcut.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		b.add_child(shortcut)
+		for state in ["font_hover_color","font_pressed_color","font_hover_pressed_color"]:
+			b.add_theme_color_override(state,Color("543957"))
+		b.add_theme_color_override("font_color",Color("543957"))
+		b.tooltip_text=dish_name(i)
 		b.focus_mode=Control.FOCUS_NONE
 		b.pressed.connect(func(): selected=i)
 		slots.add_child(b); slot_buttons.append(b)
 	sync_seats()
+	view_focus=player
 	if auto_load and (FileAccess.file_exists(save_path) or FileAccess.file_exists(save_path+".bak")): load_game()
 	refresh()
+
+func hud_chip(active:bool=false)->StyleBoxFlat:
+	var box=StyleBoxFlat.new()
+	box.bg_color=Color("ffebc9f2") if active else Color("ffefe1cc")
+	box.set_corner_radius_all(12)
+	box.set_border_width_all(3 if active else 2)
+	box.border_color=Color("e9ab64") if active else Color("fff5e8ec")
+	box.shadow_color=Color("65415e77")
+	box.shadow_size=2
+	box.shadow_offset=Vector2(0,3)
+	return box
 
 func label_at(pos: Vector2, size: int) -> Label:
 	var l = Label.new()
 	l.position = pos
+	l.add_theme_constant_override("outline_size",4)
+	l.add_theme_color_override("font_outline_color",Color("614660"))
 	l.add_theme_font_size_override("font_size",size)
 	ui.add_child(l)
 	return l
@@ -210,34 +313,31 @@ func notify(s: String):
 
 func refresh():
 	top.text = "星灯回转锅 / 第 %d 天 · %s   金币 %d   收入 %d" % [day,phase,money,income]
-	status.text = toast_text if toast_time > 0 else "布局提示：餐带同色闭环；桌椅邻接同区餐带；补餐点紧邻同区餐带。"
+	status.text = toast_text if toast_time > 0 else ""
 	var guide = "营业 %d 秒 · 已结账 %d/%d" % [maxi(0,150-int(elapsed)),served,guest_target] if phase=="营业" else "准备期 · 左上采购，左下备菜，左侧铃铛开门"
 	hint.text="手持：%s   |   %s"%["空盘托" if held<0 else SPECIALS[cooked] if cooked>=0 else dish_name(held),guide]
 	action_label.text=nearby_action()
 	if phase=="营业": action_label.text+="　叫号区 %d人等候"%waiting.size()
 	for i in range(slot_buttons.size()):
-		slot_buttons[i].text="%s%d %s ×%d"%["▶" if selected==i else "",i+1,dish_name(i),ready_food[i]]
-		slot_buttons[i].modulate=Color("ffe2a2") if selected==i else Color.WHITE
+		slot_buttons[i].text="×%d"%ready_food[i]
+		slot_buttons[i].set_pressed_no_signal(selected==i)
 	for tool in tool_buttons:
 		tool_buttons[tool].modulate=Color("ffe2a2") if tool==build_tool else Color.WHITE
 	build_bar.visible=build_mode
 	build_info.visible=build_mode
 	if build_mode:
-		build_info.text="%s · %s区 · 旋转%d° | 左键操作，餐带可拖画 / 右键取消或拆除"%[{"facility":FACILITY[facility_kind],"table":"放桌椅","move":"点击桌子，再点新位置","belt":"铺闭环餐带","feeder":"放补餐点","zone":"给桌子或餐带改区","erase":"拆除"}[build_tool],layout.zone_name(build_zone),build_rot*90]
+		build_info.text="%s · %s区 · 旋转%d° | 左键操作，餐带可拖画 / 右键取消或拆除"%[{"window":"出餐窗：一面接餐带，对面留后厨工作位","wall":"拖画隔墙，留空作门口","aisle":"拖铺走道","facility":FACILITY[facility_kind],"table":"放桌椅","move":"点击桌子，再点新位置","belt":"铺闭环餐带","feeder":"放补餐点","zone":"给桌子或餐带改区","erase":"拆除"}[build_tool],layout.zone_name(build_zone),build_rot*90]
 		action_label.text="B / 完成：退出布局；放置免费。房型切换保留家具，请修复红色提示后营业。"
 
 func nearby_action() -> String:
 	if build_mode: return ""
 	if player.distance_to(Vector2(160,220))<120: return "[E] 打开采购" if phase!="营业" else "商户已收摊"
-	if player.distance_to(Vector2(190,580))<135: return "[C] 现做加单 / [E] 拿 %s（剩 %d）"%[dish_name(selected),ready_food[selected]] if phase=="营业" else "[E] 打开料理台"
+	if player.distance_to(Vector2(190,580))<135: return "[E / C] 查看定制单" if phase=="营业" else "[E] 打开料理台"
 	if player.distance_to(Vector2(160,365))<80: return "[E] 开店 / 招聘 / 岗位安排"
 	if phase=="营业":
 		for i in range(seats.size()):
-			if guests[i]!=null and player.distance_to(seats[i])<65 and held>=0: return "[E] 给这位客人送 %s"%dish_name(held)
-		for r in range(layout.routes.size()):
-			for f in layout.routes[r].feeders:
-				if player.distance_to(layout.center(f.cell))<65: return "[E] 从补餐点放上 %s区餐带"%layout.zone_name(layout.routes[r].zone)
-	return "靠近设施查看操作；先选菜，料理台拿菜，再到补餐点或客人旁按 E。"
+			if guests[i]!=null and cooked>=0 and guests[i].order==cooked and not guests[i].bonus and player.distance_to(seats[i])<65: return "[E] 给这位客人送 %s"%SPECIALS[cooked]
+	return "普通菜自动出餐；客人点了定制菜时，到后厨按 E 查看。"
 
 func sync_seats():
 	seats.clear(); seat_tables.clear(); guests.clear()
@@ -318,6 +418,7 @@ func edit_cell(c: Vector2i):
 	remember_layout()
 	var success=true
 	match build_tool:
+		"window","wall","aisle": success=layout.paint_partition(c,build_tool)
 		"facility": success=layout.place_facility(c,facility_kind)
 		"table": success=layout.place_table(c,build_rot,build_zone)
 		"move":
@@ -356,8 +457,8 @@ func _process(dt):
 		next.y = clampf(next.y,195,650)
 		if player_can_stand(Vector2(next.x,player.y)): player.x=next.x
 		if player_can_stand(Vector2(player.x,next.y)): player.y=next.y
-	if build_mode and not panel.visible and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and build_tool in ["belt","erase","zone"]:
-		var c=layout.cell(get_global_mouse_position())
+	if build_mode and not panel.visible and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and build_tool in ["belt","erase","zone","wall","aisle"]:
+		var c=layout.cell(view_ground(get_viewport().get_mouse_position()))
 		if c!=last_brush: last_brush=c;edit_cell(c)
 	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): last_brush=Vector2i(-100,-100)
 	if cooking and is_instance_valid(cook_cursor):
@@ -370,7 +471,7 @@ func _process(dt):
 	art.actor_time("player",player_animation(),dt)
 	art.actor_time("lumi",staff_animation_name(),dt)
 	refresh()
-	queue_redraw()
+	update_view(dt)
 
 func _unhandled_key_input(e):
 	if not e is InputEventKey or not e.pressed or e.echo: return
@@ -404,14 +505,14 @@ func _unhandled_input(e):
 	if phase=="营业" and not panel.visible and e is InputEventMouseButton and e.button_index==MOUSE_BUTTON_LEFT and e.pressed:
 		for i in range(guests.size()-1,-1,-1):
 			var g=guests[i]
-			if g!=null and e.position.distance_to(g.position+Vector2(0,-19))<26:
+			if g!=null and Rect2(diner_position(i)-Vector2(25,60),Vector2(50,62)).has_point(view_ground(e.position)):
 				clear_panel("莱恩" if g.special else "客人 %d"%(g.ticket+1))
 				line("喜好："+TASTE[g.wish]+" · "+ING[g.wish])
 				line("饱腹 %d / %d"%[g.full,g.capacity])
 				if g.order>=0: line("加单："+SPECIALS[g.order]+("（已送达）" if g.bonus else ""))
 				close_button();return
 	if build_mode and not panel.visible and e is InputEventMouseButton and e.pressed:
-		var c=layout.cell(e.position)
+		var c=layout.cell(view_ground(e.position))
 		if e.button_index==MOUSE_BUTTON_LEFT:
 			last_brush=c;edit_cell(c)
 		elif e.button_index==MOUSE_BUTTON_RIGHT:
@@ -420,7 +521,7 @@ func _unhandled_input(e):
 				remember_layout();layout.erase(c);layout.compile();sync_seats()
 		return
 	if furniture_mode and e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-		var p = e.position
+		var p = view_ground(e.position)
 		if Rect2(90,170,1080,470).has_point(p) and not Rect2(320,230,650,330).has_point(p):
 			decor_pos = p
 			furniture_mode = false
@@ -432,7 +533,7 @@ func interact():
 		else: show_market()
 		return
 	if player.distance_to(Vector2(190,580)) < 135:
-		if phase == "营业": take_food()
+		if phase == "营业": kitchen_orders()
 		else: show_kitchen()
 		return
 	if player.distance_to(Vector2(160,365)) < 80:
@@ -447,13 +548,7 @@ func interact():
 					if g!=null and g.order==cooked and not g.bonus and g.trip.is_empty() and player.distance_to(seats[i])<65:
 						serve_guest(i);return
 				notify("请到点了这道菜的客人桌旁，等客人回座后送餐。");return
-			for r in range(layout.routes.size()):
-				for f in layout.routes[r].feeders:
-					if player.distance_to(layout.center(f.cell))<65:
-						if add_plate(r,held,f.index): held=-1
-						else: notify("这条餐带已满，等客人取餐。")
-						return
-		notify("料理台取菜 → 同区补餐点放菜；也可直接给客人送喜欢的菜。")
+		notify("普通菜自动出餐，定制单可到后厨查看。")
 
 func clear_panel(title: String):
 	cooking = false
@@ -528,7 +623,7 @@ func show_preparation():
 	line("清单优先使用现有库存，均衡补齐六种基础菜；以3份原料一组采购。建议数量不保证客人口味或送餐效率。")
 	for i in range(6):
 		line("%s：原料%d / 成品%d / 目标%d盘 / 需买%d份"%[ING[i],raw[i],ready_food[i],plan.targets[i],plan.purchases[i]])
-	line("预计采购%d金；持有%d金。%s"%[plan.cost,money,"露米今晚另需8金工资。" if employee else "目前由你亲自补餐。"])
+	line("预计采购%d金；持有%d金。%s"%[plan.cost,money,"露米今晚另需8金工资。" if employee else "普通菜由出餐口自动供应。"])
 	button("按清单采购 · %d金"%plan.cost,func(): buy_recommended();show_preparation())
 	button("按计划装盘 · 保留多余原料",func(): prepare_recommended();show_preparation())
 	button("查看开店检查",show_open)
@@ -635,9 +730,9 @@ func show_open():
 	var plan=preparation_plan()
 	line("库存检查：已备%d / 建议%d盘。%s"%[plan.total,plan.recommended,"不足12盘，不能开门。" if plan.total<12 else "可开门；仍有缺餐风险。" if plan.missing>0 else "数量充足，注意及时补餐。"])
 	if employee and money<8: line("资金提醒：当前不足8金工资，需依靠今晚收入支付。")
-	if not employee: line("人手提醒：尚未招聘，需要亲自往返补餐。")
+	if not employee: line("普通菜由出餐口供应，可招聘露米巡区补餐。")
 	button("库存预警与备菜计划",show_preparation)
-	line("先选菜 → 料理台 E 拿菜 → 彩色补餐点 E 上餐。长餐带需要更久才能送达。")
+	line("普通菜自动上带，店长在后厨现做定制菜。长餐带需要更久才能送达。")
 	button("敲铃 · 开始营业",func(): start_business())
 	if not employee: button("招聘露米 · 符文补餐员 30 金",func(): hire(); show_open())
 	else:
@@ -693,7 +788,7 @@ func start_business() -> bool:
 	staff_clock = 0
 	panel.hide()
 	spawn_guest()
-	notify("开门啦！先到料理台取菜，给餐带补货。勇者将第三个到来。")
+	notify("开门啦！普通菜开始自动供应，留意客人的定制单。勇者将第三个到来。")
 	return true
 
 func kitchen_orders():
@@ -710,12 +805,6 @@ func cook_order(j:int):
 	if ready_food[BASE[j]]<=0: notify("对应备菜已用完。");return
 	ready_food[BASE[j]]-=1;held=BASE[j];cooked=j;kitchen_time=2.5;panel.hide()
 	notify("正在制作"+SPECIALS[j]+"…")
-
-func take_food():
-	if held >= 0: notify("手里已有菜，Q 放回备餐区。") ; return
-	if ready_food[selected] <= 0: notify("这道菜已经没有了，按 1—7 换菜。") ; return
-	ready_food[selected] -= 1
-	held = selected
 
 func spawn_guest():
 	if spawned>=guest_target: return
@@ -759,7 +848,9 @@ func add_plate(r: int, food: int, index: int) -> bool:
 	return true
 
 func tick_business(dt: float):
+	var previous_elapsed=elapsed
 	elapsed += dt
+	if int(elapsed/5)>int(previous_elapsed/5): supply_outlets()
 	if kitchen_time>0:
 		kitchen_time=maxf(0,kitchen_time-dt)
 		if kitchen_time==0: notify("出锅了，送到点单客人桌边。")
@@ -817,14 +908,27 @@ func tick_business(dt: float):
 	if employee: tick_staff(dt)
 	if elapsed>=150 or served>=guest_target: end_day()
 
-func staff_choose_food() -> int:
+func supply_outlets():
+	for r in range(layout.routes.size()):
+		var ports=layout.routes[r].feeders
+		if ports.is_empty(): continue
+		var outlet=ports[0]
+		for port in ports:
+			if port.has("window"):
+				outlet=port
+				break
+		if employee and not outlet.has("window") and (staff_zone<0 or staff_zone==layout.routes[r].zone): continue
+		var food=choose_supply_food(r)
+		if food>=0 and add_plate(r,food,outlet.index): ready_food[food]-=1
+
+func choose_supply_food(route:int) -> int:
 	for i in range(seats.size()):
 		var g=guests[i]
-		if g!=null and not g.bonus and layout.route_for_table(layout.tables[seat_tables[i]])==staff_route:
+		if g!=null and not g.bonus and layout.route_for_table(layout.tables[seat_tables[i]])==route:
 			var wish=1 if g.special else int(g.wish)
 			if ready_food[wish]>0: return wish
-	for j in range(6):
-		var k=(j+int(staff_animation))%6
+	for j in range(ready_food.size()):
+		var k=(j+int(elapsed/5))%ready_food.size()
 		if ready_food[k]>0: return k
 	return -1
 
@@ -867,7 +971,7 @@ func tick_staff(dt: float):
 		if not route.is_empty() and (shortest.is_empty() or route.size()<shortest.size()): shortest=route;staff_feeder=i
 	if shortest.is_empty(): return
 	for j in range(staff_capacity()):
-		var food=staff_choose_food()
+		var food=choose_supply_food(chosen)
 		if food<0: break
 		ready_food[food]-=1;staff_carry.append(food)
 	if staff_carry.is_empty(): return
@@ -1058,7 +1162,7 @@ func apply_save(data: Dictionary):
 func show_menu():
 	if build_mode: toggle_build()
 	clear_panel("店长手册 · 查看时暂停营业")
-	line("① 左上集市采购 → 左下料理台装盘。\n② 右侧铃铛开店，可招聘露米往返补餐。\n③ 按 1—7 选菜，料理台 E 拿菜。\n④ 走近彩色补餐点 E 上餐，客人自动取餐。\n⑤ 看加单气泡，到料理台按 C 现做，回桌旁 E 送餐。\n⑥ 打烊看账本，再迎接下一天。\n\n清炖霜牛成功三次解锁快捷制作。\n准备期按 B 布局，左键放置，R 旋转，右键拆除。\n餐带同区闭环；桌子与补餐点紧邻同区餐带。\n露米可自动巡区，或指定负责某一区。\n准备期可手动保存，打烊自动保存。")
+	line("① 左上集市采购 → 左下料理台装盘。\n② 右侧铃铛开店，可招聘露米往返补餐。\n③ 普通菜由出餐口和员工供应。\n④ 客人从回转带取餐。\n⑤ 看加单气泡，到料理台按 C 现做，回桌旁 E 送餐。\n⑥ 打烊看账本，再迎接下一天。\n\n清炖霜牛成功三次解锁快捷制作。\n准备期按 B 布局，左键放置，R 旋转，右键拆除。\n餐带同区闭环；桌子与补餐点紧邻同区餐带。\n露米可自动巡区，或指定负责某一区。\n准备期可手动保存，打烊自动保存。")
 	if phase=="结算": button("查看打烊账本 / 下一天",show_summary)
 	button("街区快报",show_news)
 	button("查看历日经营记录",show_history)
@@ -1087,38 +1191,18 @@ func ellipse(center: Vector2,r: Vector2,color: Color):
 	draw_colored_polygon(points,color)
 
 func _draw():
-	draw_rect(Rect2(0,0,1280,800),Color("222c37"))
-	draw_rect(Rect2(30,110,1220,575),Color("5a4241"))
-	draw_rect(Rect2(48,130,1184,540),Color("bb916b"))
-	for y in range(140,670,44):
-		draw_line(Vector2(48,y),Vector2(1232,y),Color("a57b5c"),2)
-		for x in range(60+(y%3)*50,1230,130): draw_line(Vector2(x,y),Vector2(x,mini(y+42,670)),Color("ad8360"),1)
-	draw_rect(Rect2(48,110,1184,80),Color("847466"))
-	draw_rect(Rect2(48,170,1184,20),Color("5b4845"))
-	for x in range(48,1232,148):
-		draw_rect(Rect2(x,110,10,80),Color("624d47"))
-	for x in [450,750,1050]:
-		draw_rect(Rect2(x,119,95,43),Color("3e626d"))
-		draw_line(Vector2(x+47,119),Vector2(x+47,162),Color("c6ad84"),4)
-		draw_line(Vector2(x,140),Vector2(x+95,140),Color("c6ad84"),3)
-	for x in [290,990]:
-		draw_line(Vector2(x,110),Vector2(x,175),Color("44364b"),4)
-		draw_circle(Vector2(x,175),20,Color("ffd88a"))
-		draw_circle(Vector2(x,175),30,Color(1,0.8,0.4,0.10))
-	if not art.draw(self,["furniture/market"],Vector2(170,255),art_clock): block(Rect2(80,200,180,55),25,Color("6c7f65"))
-	text_at(Vector2(95,203),"月桥集市",22)
-	text_at(Vector2(95,232),"采购  ·  E",16)
-	for i in range(6): draw_circle(Vector2(95+i*28,258),10,COLORS[i])
-	if not art.draw(self,["furniture/kitchen"],Vector2(190,630),art_clock): block(Rect2(80,570,220,60),25,Color("6f5360"))
-	text_at(Vector2(95,578),"料理台 / 备餐区",20)
-	text_at(Vector2(95,607),"备菜 · 取菜  E",16)
-	draw_circle(Vector2(160,365),40,Color("dcaa57"))
-	text_at(Vector2(128,370),"开店铃",20,Color("523e3a"))
-	text_at(Vector2(80,420),"招聘 / 装修 / 开门",16,Color("493638"))
+	draw_set_transform(VIEW_CENTER-view_focus*view_zoom,0,Vector2.ONE*view_zoom)
+	var seam=216.0
+	for x in range(-2,6):
+		for y in range(8):
+			draw_texture(BOARDS,Vector2(x*300,seam+y*BOARDS.get_height()))
+		
+	for x in range(-2,8): draw_texture_rect(ROOM,Rect2(x*210+74,seam-94,210,157.5),false)
 	draw_layout()
-	if decor:
-		draw_circle(decor_pos,16,Color("bf785b"))
-		for d in [Vector2(-10,-15),Vector2(8,-20),Vector2(0,-30)]: draw_circle(decor_pos+d,12,Color("93b885"))
+
+	draw_set_transform(Vector2.ZERO,0,Vector2.ONE)
+	
+	
 
 func bubble_style() -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()
@@ -1131,16 +1215,27 @@ func draw_layout():
 		for x in range(layout.WIDTH):
 			var c=Vector2i(x,y);var p=layout.center(c)
 			if not layout.floor_at(c): draw_rect(Rect2(p-Vector2.ONE*20,Vector2.ONE*40),Color("283541"))
-			else: art.draw(self,["environment/floor"],p,art_clock)
+			
 			if layout.floor_at(c) and build_mode: draw_rect(Rect2(p-Vector2.ONE*20,Vector2.ONE*40),Color(1,1,1,0.18),false,1)
-	for f in layout.facilities:
-		var pos=layout.center(Vector2i(f.x,f.y))
-		block(Rect2(pos-Vector2(17,9),Vector2(34,18)),12,Color("77acac"))
-		text_at(pos+Vector2(-18,-12),FACILITY[int(f.kind)],13)
-	for q in range(mini(5,waiting.size())):
-		person(layout.center(Vector2i(20-q,11)),COLORS[int(waiting[q].ticket)%6],0)
-	text_at(layout.center(Vector2i(18,11)),"叫号区 %d"%waiting.size(),14)
 	var objects=[]
+	for c in layout.partitions:
+		if not layout.floor_at(c): continue
+		var point=layout.center(c)
+		if layout.partitions[c] in ["wall","window"]:
+			objects.append({"y":point.y+18,"kind":layout.partitions[c],"data":point})
+		else:
+			draw_rect(Rect2(point-Vector2.ONE*20,Vector2.ONE*40),Color("d9b69f"))
+			draw_rect(Rect2(point-Vector2.ONE*19,Vector2.ONE*38),Color("e8cdb5"))
+	add_service(objects,"market",Vector2(170,260),108)
+	add_service(objects,"kitchen",Vector2(190,610),104)
+	add_service(objects,"bell",Vector2(160,380),38)
+	if decor: add_service(objects,"flowers",decor_pos,30)
+	var facilities=["sauce","drink","ice","bench"]
+	for f in layout.facilities:
+		add_service(objects,facilities[int(f.kind)],layout.center(Vector2i(f.x,f.y)),42)
+	for q in range(mini(5,waiting.size())):
+		var pos=layout.center(Vector2i(20-q,11))
+		objects.append({"y":pos.y,"kind":"waiting","data":pos})
 	for c in layout.belts: objects.append({"y":layout.center(c).y,"kind":"belt","data":c})
 	for t in layout.tables: objects.append({"y":layout.center(layout.body(t)[-1]).y+17,"kind":"table","data":t})
 	for t in layout.tables:
@@ -1157,25 +1252,19 @@ func draw_layout():
 	# Bubbles stay above scenery, independently of body occlusion.
 	for i in range(seats.size()):
 		if guests[i]==null: continue
-		var g=guests[i];var pos=g.position
+		var g=guests[i];var pos=diner_position(i)
 		if g.order<0 or not g.trip.is_empty(): continue
 		var bubble=pos+Vector2(-54,-72 if i%2==0 else -103)
 		draw_style_box(bubble_style(),Rect2(bubble,Vector2(109,26)))
 		text_at(bubble+Vector2(4,18),"谢谢！" if g.bonus else SPECIALS[g.order],12,Color("51444b"))
 	if build_mode:
-		var c=layout.cell(get_global_mouse_position())
+		var c=layout.cell(view_ground(get_viewport().get_mouse_position()))
 		if build_tool=="table" or (build_tool=="move" and moving_table>=0):
 			var t={"x":c.x,"y":c.y,"rot":build_rot,"zone":build_zone}
 			var col=Color(0.4,1,0.7,0.5) if layout.table_valid(t,moving_table) else Color(1,0.3,0.3,0.6)
 			for q in layout.body(t)+layout.chairs(t): draw_rect(Rect2(layout.center(q)-Vector2.ONE*19,Vector2.ONE*38),col)
 		elif layout.floor_at(c): draw_rect(Rect2(layout.center(c)-Vector2.ONE*19,Vector2.ONE*38),Color(1,1,1,0.35))
 		if not layout.errors.is_empty(): text_at(Vector2(350,182),str(layout.errors[0]),14,Color("ffe3bd"))
-	else:
-		for r in range(layout.routes.size()):
-			var route=layout.routes[r]
-			var p=layout.center(route.cells[0])+Vector2(-10,-47)
-			text_at(p,"%s区 %d/%d盘 · 一圈%.0f秒"%[layout.zone_name(route.zone),route_plate_count(r),route.capacity,route.cells.size()/1.8],13,Color("fff0d4"))
-
 func block(rect: Rect2,height: float,color: Color):
 	draw_rect(Rect2(rect.position+Vector2(7,9),rect.size),Color(0.12,0.08,0.13,0.22))
 	draw_rect(Rect2(rect.position+Vector2(0,-height),rect.size+Vector2(0,height)),color.darkened(0.38))
@@ -1225,17 +1314,15 @@ func draw_depth_object(obj: Dictionary):
 			text_at(q+Vector2(-11,-19),"补",19,Color("293a41"))
 		"guest":
 			var i=obj.data;var g=guests[i]
-			if not art.draw(self,["character/hero/sit","character/hero/idle"] if g.special else ["character/guest_%d/sit"%(g.wish%3),"character/guest_%d/idle"%(g.wish%3)],g.position,art_clock):
-				person(g.position,Color("6b92b5") if g.special else COLORS[g.wish],i%2)
+			sprite(DINER,diner_position(i)+Vector2(0,15 if g.trip.is_empty() else 2),Vector2(48,53))
 		"staff":
-			if not art.draw(self,actor_keys("lumi",staff_animation_name()),staff_pos,art.actor_seconds("lumi")):
-				person(staff_pos,Color("b5a1d5"),1)
-			text_at(staff_pos+Vector2(-18,-55),"露米",13)
+			sprite(DINER,staff_pos,Vector2(49,56))
 		"player":
-			if not art.draw(self,actor_keys("player",player_animation()),player,art.actor_seconds("player")):
-				person(player,Color("70b9b1"))
+			ellipse(player+Vector2(-1,0),Vector2(15,3),Color("#5b426655"))
+			ellipse(player-Vector2(0,1),Vector2(8,2),Color("#50355388"))
+			sprite(MANAGER,player,Vector2(56,60))
 			if held>=0:
-				ellipse(player+Vector2(23,-3),Vector2(14,8),Color("fff0da"));draw_circle(player+Vector2(23,-6),7,Color("c78558") if held==6 else COLORS[held])
+				draw_meal(player+Vector2(21,-21),held)
 
 func player_animation() -> String:
 	if held>=0: return "carry_walk" if player_motion else "carry_idle"
@@ -1244,6 +1331,16 @@ func player_animation() -> String:
 func staff_animation_name() -> String:
 	if not staff_carry.is_empty(): return "carry_walk" if staff_motion else "carry_idle"
 	return "walk" if staff_motion else "idle"
+
+func diner_position(i:int)->Vector2:
+	var g=guests[i]
+	if not g.trip.is_empty(): return g.position
+	var t=layout.tables[seat_tables[i]]
+	if t.rot!=2: return g.position
+	var peer=i^1
+	if guests[peer]!=null: return g.position
+	var chairs=layout.chairs(t)
+	return (layout.center(chairs[0])+layout.center(chairs[1]))*0.5-Vector2(6,0)
 
 func actor_keys(id: String, state: String) -> Array:
 	var keys=["character/"+id+"/"+state]
@@ -1257,31 +1354,126 @@ func belt_art_key(c: Vector2i) -> String:
 		if layout.belts.has(c+pair[1]): dirs+=pair[0]
 	return "belt/"+dirs
 
+func sprite(tex:Texture2D,foot:Vector2,size:Vector2):
+	draw_texture_rect(tex,Rect2(foot-Vector2(size.x/2,size.y),size),false)
+
 func draw_art_object(obj: Dictionary) -> bool:
 	match obj.kind:
+		"window":
+			var p:Vector2=obj.data
+			draw_rect(Rect2(p+Vector2(-20,0),Vector2(40,19)),Color("b88b99"))
+			for x in [-20,16]:
+				draw_rect(Rect2(p+Vector2(x,-27),Vector2(4,28)),Color("855b68"))
+			draw_rect(Rect2(p+Vector2(-20,-28),Vector2(40,5)),Color("dbaf88"))
+			draw_rect(Rect2(p+Vector2(-20,-2),Vector2(40,5)),Color("f3c58f"))
+			return true
+		"wall":
+			var p:Vector2=obj.data
+			draw_rect(Rect2(p+Vector2(-20,-23),Vector2(40,43)),Color("92718a"))
+			draw_rect(Rect2(p+Vector2(-20,-21),Vector2(40,34)),Color("cbaac3"))
+			draw_rect(Rect2(p+Vector2(-20,-27),Vector2(40,5)),Color("79556c"))
+			draw_rect(Rect2(p+Vector2(-20,-27),Vector2(40,2)),Color("e3b696"))
+			draw_rect(Rect2(p+Vector2(-20,13),Vector2(40,6)),Color("946c68"))
+			return true
 		"table":
 			var t=obj.data
 			var cells=layout.body(t)
 			var center=(layout.center(cells[0])+layout.center(cells[1]))/2.0
-			if not art.draw(self,["furniture/table/"+str(t.rot)],center,art_clock): return false
-			# World anchor stays at the footprint center; pots remain separate movable assets.
-			for c in cells:
-				var pos=layout.center(c)-Vector2(0,29)
-				if not art.draw(self,["prop/hotpot"],pos,art_clock):
-					ellipse(pos,Vector2(12,8),Color("bd8551"));ellipse(pos-Vector2(0,2),Vector2(9,5),Color("f4c172"))
+			ellipse(center+Vector2(-1,5),Vector2(38,8) if t.rot%2==0 else Vector2(20,11),Color("#50355655"))
+			sprite(TABLE,center+Vector2(0,14),Vector2(86,56) if t.rot%2==0 else Vector2(46,75))
+			var hob_width=34 if t.rot%2==0 else 26
+			var hob=center-Vector2(hob_width/2.0,26)
+			draw_rect(Rect2(hob,Vector2(hob_width,13)),Color("51394e"))
+			draw_rect(Rect2(hob+Vector2(1,1),Vector2(hob_width-2,9)),Color("776278"))
+			draw_rect(Rect2(center+Vector2(-3,-16),Vector2(6,1)),Color("ffc979"))
+			service_sprite("hotpot",center-Vector2(0,18),44 if t.rot%2==0 else 32)
+			var place_center=center-Vector2(0,26 if t.rot%2==0 else 28)
+			for chair in layout.chairs(t):
+				var direction=(layout.center(chair)-center).sign()
+				var offset=direction*Vector2(29,5) if t.rot%2==0 else direction*Vector2(10,17)
+				saucer(place_center+offset,7)
 			return true
-		"chair": return art.draw(self,["furniture/chair/"+str(obj.rot)],layout.center(obj.data),art_clock)
-		"belt": return art.draw(self,[belt_art_key(obj.data)],layout.center(obj.data),art_clock)
+		"chair":
+			sprite(CHAIR,layout.center(obj.data)+Vector2(0,18 if obj.rot==2 else 4),Vector2(29,39));return true
+		"belt":
+			var shape=belt_art_key(obj.data).trim_prefix("belt/")
+			if not conveyor_tiles.has(shape): conveyor_tiles[shape]=make_conveyor_tile(shape)
+			draw_texture(conveyor_tiles[shape],layout.center(obj.data)-Vector2(20,44))
+			return true
+		"service":
+			service_sprite(obj.data.name,obj.data.pos,obj.data.width)
+			return true
+		"waiting":
+			sprite(DINER,obj.data,Vector2(47,52));return true
 		"feeder":
-			var f=obj.data;var pos=layout.center(Vector2i(f.x,f.y))
-			if not art.draw(self,["furniture/feeder"],pos,art_clock): return false
-			text_at(pos+Vector2(-8,-20),"补",16,layout.ZONE_COLORS[f.zone]);return true
+			var f=obj.data
+			service_sprite("feeder",layout.center(Vector2i(f.x,f.y))+Vector2(0,7),45)
+			return true
 		"plate":
-			var p=obj.data;var pos=plate_pos(p.t,p.route)-Vector2(0,24)
-			var empty_drawn=art.draw(self,["prop/plate"],pos,art_clock)
-			var food_key="food/"+str(p.food)
-			if not empty_drawn and art.resolve([food_key])==null: return false
-			if not empty_drawn: ellipse(pos,Vector2(13,7),Color("fff0da"))
-			if not art.draw(self,[food_key],pos-Vector2(0,2),art_clock): draw_circle(pos-Vector2(0,2),6,Color("c78558") if p.food==6 else COLORS[p.food])
+			var plate=obj.data
+			draw_meal(plate_pos(plate.t,plate.route)-Vector2(0,22),plate.food,true)
 			return true
 	return false
+
+func add_service(objects:Array,key:String,pos:Vector2,width:float):
+	objects.append({"y":pos.y,"kind":"service","data":{"name":key,"pos":pos,"width":width}})
+
+func service_sprite(key:String,foot:Vector2,width:float):
+	var tex:Texture2D=SERVICE[key]
+	sprite(tex,foot,Vector2(width,width*tex.get_height()/tex.get_width()))
+
+func saucer(center:Vector2,width:float):
+	ellipse(center+Vector2(0,1),Vector2(width,width*0.42),Color("76566f"))
+	ellipse(center,Vector2(width-1,width*0.4),Color("ffebc9"))
+	ellipse(center,Vector2(width*0.74,width*0.25),Color("d7abba"))
+	ellipse(center+Vector2(0,1),Vector2(width*0.69,width*0.21),Color("fff1df"))
+
+func draw_meal(pos:Vector2,food:int,floating:bool=false):
+	if floating:
+		ellipse(pos+Vector2(0,8),Vector2(19,4),Color("#66456866"))
+		var pulse=sin(art_clock*3+pos.x*0.02)
+		pos.y+=roundf(pulse)
+		for x in [-13,0,13]:
+			draw_rect(Rect2(pos+Vector2(x-1,8),Vector2(3,2)),Color("#ffdf91"))
+		for x in [-12,0,12]:
+			draw_colored_polygon(PackedVector2Array([pos+Vector2(x-8,3),pos+Vector2(x-5,0),pos+Vector2(x+8,1),pos+Vector2(x+6,6),pos+Vector2(x,8)]),Color("#d9aad0"))
+	saucer(pos,20)
+	if floating and food==4:
+		service_sprite("food0",pos+Vector2(-6,2),20)
+		service_sprite("food4",pos+Vector2(6,4),22)
+	else:
+		service_sprite("food"+str(food),pos+Vector2(0,4),30)
+
+# Rasterize each connection once on the same pixel grid as the character sprites.
+func make_conveyor_tile(shape:String)->Texture2D:
+	var image=Image.create(40,53,false,Image.FORMAT_RGBA8)
+	var top={}
+	for x in range(40):
+		for y in range(40):
+			var p=Vector2(x-19.5,y-19.5)
+			var distance=p.length()
+			for dir in shape:
+				var axis:Vector2={"n":Vector2.UP,"s":Vector2.DOWN,"e":Vector2.RIGHT,"w":Vector2.LEFT}[dir]
+				if p.dot(axis)>0: distance=minf(distance,absf(p.cross(axis)))
+			if distance<13: top[Vector2i(x,y)]=distance
+	for x in range(40):
+		for y in range(40):
+			var cell=Vector2i(x,y)
+			if not top.has(cell): continue
+			for depth in range(10,0,-1):
+				var side=Color("#619b96") if depth<8 else Color("#437677")
+				if absi(depth-5)+absi(x-20)<=2: side=Color("#ffe09b")
+				image.set_pixel(x,y+depth,side)
+			var rim=float(top[cell])
+			var color=Color("#bcaac2")
+			if rim<2: color=Color("#c4b1ce")
+			if rim>9: color=Color("#f6dbaa")
+			if rim>12: color=Color("#735570")
+			image.set_pixel(x,y,color)
+	for x in [6,30]:
+		for y in range(40,52):
+			if image.get_pixel(x,39).a>0 or shape in ["ew","e","w"]:
+				var leg_y=y if shape not in ["ew","e","w"] else y-4
+				for k in range(4):
+					if image.get_pixel(x+k,leg_y).a==0: image.set_pixel(x+k,leg_y,Color("#926858") if k<3 else Color("#674b56"))
+	return ImageTexture.create_from_image(image)

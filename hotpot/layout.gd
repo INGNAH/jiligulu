@@ -30,6 +30,13 @@ func chairs(t: Dictionary) -> Array:
 	var result=[]
 	for c in body(t): result.append(c+d)
 	return result
+var partitions={}
+func paint_partition(c:Vector2i,kind:String)->bool:
+	if not floor_at(c) or c in [Vector2i(0,11),Vector2i(20,11)]: return false
+	if not partitions.has(c) and occupied(c): return false
+	partitions[c]=kind
+	return true
+
 var facilities=[]
 func facility_at(c: Vector2i) -> int:
 	for i in range(facilities.size()):
@@ -40,7 +47,7 @@ func place_facility(c:Vector2i, kind:int) -> bool:
 	facilities.append({"x":c.x,"y":c.y,"kind":kind})
 	return true
 func occupied(c: Vector2i, skip: int=-1) -> bool:
-	if belts.has(c) or facility_at(c)>=0: return true
+	if partitions.has(c) or belts.has(c) or facility_at(c)>=0: return true
 	for i in range(tables.size()):
 		if i!=skip and (c in body(tables[i]) or c in chairs(tables[i])): return true
 	for f in feeders:
@@ -71,6 +78,7 @@ func place_feeder(c: Vector2i, zone: int) -> bool:
 	feeders.append({"x":c.x,"y":c.y,"zone":zone})
 	return true
 func erase(c: Vector2i):
+	if partitions.erase(c): return
 	var station=facility_at(c)
 	if station>=0: facilities.remove_at(station); return
 	var i=table_at(c)
@@ -79,7 +87,7 @@ func erase(c: Vector2i):
 	for j in range(feeders.size()-1,-1,-1):
 		if c==Vector2i(feeders[j].x,feeders[j].y): feeders.remove_at(j)
 func walkable(c: Vector2i) -> bool:
-	if not floor_at(c) or belts.has(c): return false
+	if not floor_at(c) or partitions.get(c) in ["wall","window"] or belts.has(c): return false
 	for t in tables:
 		if c in body(t): return false
 	return true
@@ -98,6 +106,7 @@ func path(a: Vector2i,b: Vector2i) -> Array:
 			if walkable(n) and not previous.has(n): previous[n]=c; queue.append(n)
 	return []
 func reset():
+	partitions.clear()
 	facilities.clear()
 	shape=0; tables.clear(); belts.clear(); feeders.clear()
 	for bounds in [[1,3,7,6,0],[12,3,18,6,1]]:
@@ -146,8 +155,23 @@ func compile() -> bool:
 				if n in ordered:
 					r.feeders.append({"cell":Vector2i(f.x,f.y),"index":ordered.find(n)})
 					break
+		for window in partitions:
+			if partitions[window]!="window": continue
+			for belt in neighbors(window):
+				if belt not in ordered: continue
+				var service_cell=window+(window-belt)
+				if path(Vector2i(0,11),service_cell).is_empty(): continue
+				r.feeders.append({"cell":service_cell,"index":ordered.find(belt),"window":window})
+				break
 		if r.feeders.is_empty(): errors.append("%s区餐带缺少紧邻的同区补餐点。"%zone_name(zone))
 		routes.append(r)
+	for window in partitions:
+		if partitions[window]!="window": continue
+		var connected=false
+		for route in routes:
+			for port in route.feeders:
+				if port.get("window")==window: connected=true
+		if not connected: errors.append("出餐窗一侧应紧贴闭环餐带，另一侧需有后厨通道。")
 	if tables.is_empty(): errors.append("至少放一张桌子。")
 	for i in range(tables.size()):
 		var t=tables[i]
@@ -175,7 +199,9 @@ func pickup_index(t: Dictionary,r: int) -> int:
 func snapshot() -> Dictionary:
 	var tiles=[]
 	for c in belts: tiles.append([c.x,c.y,belts[c]])
-	return {"facilities":facilities.duplicate(true),"shape":shape,"tables":tables.duplicate(true),"belts":tiles,"feeders":feeders.duplicate(true)}
+	var painted=[]
+	for c in partitions: painted.append([c.x,c.y,partitions[c]])
+	return {"partitions":painted,"facilities":facilities.duplicate(true),"shape":shape,"tables":tables.duplicate(true),"belts":tiles,"feeders":feeders.duplicate(true)}
 func restore(data: Dictionary):
 	facilities=data.get("facilities",[]).duplicate(true)
 	for f in facilities:
@@ -186,5 +212,7 @@ func restore(data: Dictionary):
 		for k in ["x","y","rot","zone"]: t[k]=int(t[k])
 	for f in feeders:
 		for k in ["x","y","zone"]: f[k]=int(f[k])
+	partitions.clear()
+	for tile in data.get("partitions",[]): partitions[Vector2i(int(tile[0]),int(tile[1]))]=tile[2]
 	for c in data.get("belts",[]): belts[Vector2i(int(c[0]),int(c[1]))]=int(c[2])
 	compile()

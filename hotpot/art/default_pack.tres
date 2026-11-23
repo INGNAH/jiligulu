@@ -26,26 +26,26 @@
 [sub_resource type="Resource" id="table"]
 script = ExtResource("sprite")
 frames = Array[Texture2D]([ExtResource("tex_table")])
-anchor = Vector2(310.0,498.83)
-display_scale = Vector2(0.12903225806451613,0.12903225806451613)
+anchor = Vector2(315, 500)
+display_scale = Vector2(0.17,0.17)
 pixel_art = true
 [sub_resource type="Resource" id="chair"]
 script = ExtResource("sprite")
 frames = Array[Texture2D]([ExtResource("tex_chair")])
-anchor = Vector2(320.5,536.67)
-display_scale = Vector2(0.0343213728549142,0.0343213728549142)
+anchor = Vector2(329, 505)
+display_scale = Vector2(0.116,0.116)
 pixel_art = true
 [sub_resource type="Resource" id="feeder"]
 script = ExtResource("sprite")
 frames = Array[Texture2D]([ExtResource("tex_feeder")])
-anchor = Vector2(295.0,547.8199999999999)
-display_scale = Vector2(0.06779661016949153,0.06779661016949153)
+anchor = Vector2(315, 555)
+display_scale = Vector2(0.13,0.13)
 pixel_art = true
 [sub_resource type="Resource" id="kitchen"]
 script = ExtResource("sprite")
 frames = Array[Texture2D]([ExtResource("tex_kitchen")])
-anchor = Vector2(335.0,598.78)
-display_scale = Vector2(0.2865671641791045,0.2865671641791045)
+anchor = Vector2(344, 547)
+display_scale = Vector2(0.215,0.215)
 pixel_art = true
 [sub_resource type="Resource" id="lumi"]
 script = ExtResource("sprite")
@@ -128,8 +128,8 @@ offset = Vector2(0,0)
 [sub_resource type="Resource" id="sp_manager"]
 script = ExtResource("sprite")
 frames = Array[Texture2D]([ExtResource("tx_manager")])
-anchor = Vector2(15.0,52)
-display_scale = Vector2(1,1)
+anchor = Vector2(14, 50)
+display_scale = Vector2(2.4,2.4)
 offset = Vector2(0,0)
 [sub_resource type="Resource" id="sp_ne"]
 script = ExtResource("sprite")

@@ -40,9 +40,12 @@ func run():
 	game.layout.reset()
 	check(game.start_business(),"restaurant starts with validated layout")
 	game.player=Vector2(190,580);game.selected=1;game.interact()
-	check(game.held==1 and game.ready_food[1]==19,"physical kitchen interaction takes selected dish")
-	game.player=game.layout.center(game.layout.routes[0].feeders[0].cell);game.interact()
-	check(game.held==-1 and game.plates.size()==1 and game.plates[0].route==0,"manual refill inserts dish at physical zone feeder")
+	check(game.held==-1 and game.ready_food[1]==20,"manager opens order menu without taking stock")
+	game.panel.hide()
+	game.employee=false
+	game.supply_outlets()
+	check(game.plates.size()==2 and game.plates[0].route==0,"outlets supply both zones without a hired runner")
+	game.employee=true
 	var old=game.plate_pos(game.plates[0].t,0)
 	game.tick_business(0.1)
 	check(game.plate_pos(game.plates[0].t,0)!=old,"conveyor dish advances along constructed grid route")

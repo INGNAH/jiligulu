@@ -26,9 +26,9 @@ func run():
 	check(game.hire() and game.money==102,"employee recruitment charged once")
 	check(not game.hire(),"no duplicate recruitment")
 	check(game.start_business(),"open restaurant with sufficient stock")
-	game.selected=0;game.take_food()
-	check(game.held==0 and game.ready_food[0]==11,"taking a plate removes it from prepared stock")
-	game.held=-1;game.ready_food[0]+=1
+	game.player=Vector2(190,580);game.interact()
+	check(game.held==-1 and game.ready_food[0]==12,"manager opens custom orders without taking ordinary stock")
+	game.panel.hide()
 	check(game.guests[0].order==-1,"no special request on arrival")
 	game.guests[0].order=0;game.cook_order(0);game.tick_business(2.5);game.guests[0].trip.clear()
 	var cash=game.money
