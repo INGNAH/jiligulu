@@ -7,20 +7,26 @@ func _initialize(): call_deferred("run")
 func run():
 	var l=load("res://layout.gd").new()
 	check(l.compile() and l.tables.size()==6 and l.routes.size()==2,"starter has six independent tables, two valid loops and reachable chairs")
+	var kitchen=Vector2i(1,8)
+	check(not l.walkable(kitchen) and l.walkable(kitchen,true),"staff-only kitchen permissions")
+	check(not l.path(Vector2i(0,11),kitchen,true).is_empty(),"kitchen worker can reach service window")
+	check(l.partitions.values().has("window"),"starter kitchen has a serving window")
+	l.expanded=true
+	check(l.floor_at(Vector2i(23,10)),"east wing available after expansion")
+	l.expanded=false
 	var before=l.snapshot()
 	check(not l.place_table(Vector2i(2,2),0,0),"overlapping tables rejected without changing layout")
 	check(not l.place_table(Vector2i(-1,0),0,0),"out of bounds furniture rejected")
-	check(l.place_table(Vector2i(9,8),1,2),"vertical table can be placed freely")
+	check(not l.place_table(Vector2i(14,10),1,2),"side-facing dining seats rejected")
+	check(l.place_table(Vector2i(14,10),2,2),"front-facing seats can be placed freely")
 	check(not l.compile(),"opening rejects tables without same-zone belt")
 	l.restore(before)
 	check(l.place_table(Vector2i(4,7),0,0,2) and l.compile(),"move table transaction retains seat access and belt connection")
 	l.restore(before)
-	var first=l.routes[0].cells[1]
-	l.belts.erase(first)
-	check(not l.compile(),"broken conveyor loop blocks opening")
-	l.restore(before)
-	l.belts[l.routes[0].cells[1]]=2
-	check(not l.compile(),"mixed-zone conveyor loop blocks opening")
+	var legacy=before.duplicate(true)
+	legacy.belts=[[3,3,0],[4,3,0]]
+	l.restore(legacy)
+	check(l.compile() and l.walkable(Vector2i(3,3)),"legacy rail cells become usable floor")
 	l.restore(before);l.feeders.clear()
 	check(not l.compile(),"each conveyor needs an adjacent matching feeder")
 	l.restore(before);l.shape=2
@@ -28,7 +34,7 @@ func run():
 	l.restore(before);l.shape=1
 	check(not l.compile() and not l.floor_at(Vector2i(3,1)),"long room shape changes usable floor")
 	l.restore(before)
-	for x in range(l.WIDTH): l.belts[Vector2i(x,10)]=2
+	for x in range(l.WIDTH): l.partitions[Vector2i(x,10)]="wall"
 	check(l.path(Vector2i(20,11),Vector2i(2,1)).is_empty() and not l.compile(),"blocked aisle is detected by actual pathfinding")
 	l.restore(before)
 	var json=JSON.parse_string(JSON.stringify(l.snapshot()))
@@ -39,21 +45,22 @@ func run():
 	game.income=0;game.tips=0;game.spending=0;game.served=0;game.satisfaction=0;game.plates.clear()
 	game.layout.reset()
 	check(game.start_business(),"restaurant starts with validated layout")
-	game.player=Vector2(190,580);game.selected=1;game.interact()
+	game.player=game.layout.center(game.KITCHEN_STATION);game.selected=1
+	check(game.player_can_stand(game.player) and not game.layout.walkable(game.KITCHEN_STATION),"manager can enter kitchen while guests cannot")
+	game.interact()
 	check(game.held==-1 and game.ready_food[1]==20,"manager opens order menu without taking stock")
 	game.panel.hide()
 	game.employee=false
 	game.supply_outlets()
 	check(game.plates.size()==2 and game.plates[0].route==0,"outlets supply both zones without a hired runner")
 	game.employee=true
-	var old=game.plate_pos(game.plates[0].t,0)
-	game.tick_business(0.1)
-	check(game.plate_pos(game.plates[0].t,0)!=old,"conveyor dish advances along constructed grid route")
-	var reference=game.plate_pos(0.5,0)
-	check(reference==game.layout.center(game.layout.routes[0].cells[0]).lerp(game.layout.center(game.layout.routes[0].cells[1]),0.5),"transport interpolates actual tile distance")
 	var initial_staff=game.staff_pos
-	for i in range(120): game.tick_business(0.1)
-	check(game.staff_pos!=initial_staff,"employee physically walks between kitchen and feeder")
+	var walked=false
+	for i in range(120):
+		game.tick_business(0.1)
+		walked=walked or game.staff_pos!=initial_staff
+	check(game.service_team.size()==2 and game.guests[0].get("service","waiting") in ["ordered","preparing","served"],"tableside order taken by dedicated staff")
+	check(walked,"employee physically walks between kitchen and feeder")
 	check(game.zone_stats[0].arrivals>0 and game.zone_stats[1].arrivals>0,"arrivals are distributed across independent zones")
 	# Full plates cannot silently disappear when a feeder is full.
 	var cap=game.layout.routes[0].capacity

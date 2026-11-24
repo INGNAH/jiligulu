@@ -66,17 +66,18 @@ func validate_layout(layout) -> String:
 	if not layout is Dictionary or not integer(layout.get("shape",-1),0,2): return "房型数据无效"
 	for key in ["tables","feeders","belts"]:
 		if not layout.get(key) is Array or layout[key].size()>512: return "布局数据无效"
+	var max_x=23 if layout.get("expanded",false) else 20
 	var facilities=layout.get("facilities",[])
 	if not facilities is Array or facilities.size()>252: return "自取设施无效"
 	for f in facilities:
-		if not f is Dictionary or not integer(f.get("kind"),0,3) or not integer(f.get("x"),0,20) or not integer(f.get("y"),0,11): return "自取设施无效"
+		if not f is Dictionary or not integer(f.get("kind"),0,4) or not integer(f.get("x"),0,max_x) or not integer(f.get("y"),0,11): return "自取设施无效"
 	var occupied={}
 	for t in layout.tables:
-		if not t is Dictionary or not integer(t.get("x"),0,20) or not integer(t.get("y"),0,11) or not integer(t.get("rot"),0,3) or not integer(t.get("zone"),0,2): return "桌椅数据无效"
+		if not t is Dictionary or not integer(t.get("x"),0,max_x) or not integer(t.get("y"),0,11) or not integer(t.get("rot"),0,3) or not integer(t.get("zone"),0,2): return "桌椅数据无效"
 	for f in layout.feeders:
-		if not f is Dictionary or not integer(f.get("x"),0,20) or not integer(f.get("y"),0,11) or not integer(f.get("zone"),0,2): return "补餐点数据无效"
+		if not f is Dictionary or not integer(f.get("x"),0,max_x) or not integer(f.get("y"),0,11) or not integer(f.get("zone"),0,2): return "补餐点数据无效"
 	for b in layout.belts:
-		if not b is Array or b.size()!=3 or not integer(b[0],0,20) or not integer(b[1],0,11) or not integer(b[2],0,2): return "餐带数据无效"
+		if not b is Array or b.size()!=3 or not integer(b[0],0,max_x) or not integer(b[1],0,11) or not integer(b[2],0,2): return "餐带数据无效"
 		var pos=Vector2i(b[0],b[1])
 		if occupied.has(pos): return "餐带坐标重复"
 		occupied[pos]=true

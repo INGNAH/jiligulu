@@ -164,17 +164,6 @@ func rebuild():
 			piece(scenery,q+Vector3(0,.23,0),Vector3(.49,.45,.46),WOOD)
 			var back_size=Vector3(.69,.53,.1) if outward.z!=0 else Vector3(.1,.53,.66)
 			piece(scenery,q+outward*.29+Vector3(0,.78,0),back_size,WOOD)
-	for c in l.belts:
-		var q=world(l.center(c))
-		piece(scenery,q+Vector3(0,.37,0),Vector3(.20,.74,.24),WOOD.darkened(.35))
-		piece(scenery,q+Vector3(0,.81,0),Vector3(.69,.21,.69),JADE)
-		for n in l.neighbors(c):
-			if not l.belts.has(n): continue
-			var dir=world(l.center(n))-q
-			var size=Vector3(.54,.23,.69) if dir.x!=0 else Vector3(.69,.23,.54)
-			piece(scenery,q+dir*.27+Vector3(0,.81,0),size,JADE)
-			size.y=.045
-			piece(scenery,q+dir*.27+Vector3(0,.945,0),size,l.ZONE_COLORS[l.belts[c]])
 	for f in l.feeders: station(world(l.center(Vector2i(f.x,f.y))),"补",JADE,.8)
 	for f in l.facilities: station(world(l.center(Vector2i(f.x,f.y))),game.FACILITY[int(f.kind)],JADE,.85)
 	station(world(Vector2(170,220)),"月桥集市",Color("#81a27e"),3.4)
@@ -218,5 +207,5 @@ func sync():
 		meals.append(plate)
 	while meals.size()>game.plates.size(): meals.pop_back().queue_free()
 	for i in range(meals.size()):
-		var p=game.plates[i];meals[i].position=world(game.plate_pos(p.t,p.route),1.01)
+		var p=game.plates[i];meals[i].position=world(game.layout.center(game.layout.routes[p.route].cell),1.01)
 		meals[i].get_child(0).material_override=material(game.COLORS[int(p.food)%6])

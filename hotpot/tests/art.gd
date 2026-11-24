@@ -46,8 +46,6 @@ func run():
 	check(game.player_animation()=="carry_walk","carrying while moving selects carry animation")
 	check(game.actor_keys("player","carry_walk")==["character/player/carry_walk","character/player/walk","character/player/idle"],"partial art delivery uses explicit fallback chain")
 	check(game.art.resolve(["furniture/table/1"])==null,"missing rotated view never rotates a 2.5D texture automatically")
-	game.layout.belts.clear();game.layout.belts[Vector2i.ZERO]=0;game.layout.belts[Vector2i.RIGHT]=0;game.layout.belts[Vector2i.UP]=0
-	check(game.belt_art_key(Vector2i.ZERO)=="belt/ne","conveyor corner slot matches actual neighboring directions")
 	game.layout.restore(snapshot);game.show_open()
 	check(game.panel_box.get_child(1) is TextureRect,"employee management panel embeds configured portrait")
 	game.queue_free()

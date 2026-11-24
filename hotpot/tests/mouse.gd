@@ -15,12 +15,13 @@ func run():
 	await process_frame
 	await process_frame
 	await process_frame
-	await click(game.tool_buttons["move"].get_global_rect().get_center())
-	if game.build_tool!="move": quit(1);return
 	await click((game.layout.center(Vector2i(3,7))-game.view_focus)*game.view_zoom+game.VIEW_CENTER)
-	if game.moving_table!=2: print("MOVE PICK FAILED",game.get_global_mouse_position());quit(1);return
+	await process_frame
+	assert(game.furniture_bubble.visible)
+	await click(game.furniture_bubble.get_child(1).get_global_rect().get_center())
+	assert(game.relocating)
 	await click((game.layout.center(Vector2i(4,7))-game.view_focus)*game.view_zoom+game.VIEW_CENTER)
-	assert(game.moving_table==-1 and game.layout.tables[2].x==4)
+	assert(not game.relocating and game.layout.tables[2].x==4)
 	game.toggle_build()
 	await click(game.slot_buttons[1].get_global_rect().get_center())
 	assert(game.selected==1)
