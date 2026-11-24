@@ -14,6 +14,7 @@ var ui_theme: Theme
 func _ready():
 	process_mode=Node.PROCESS_MODE_ALWAYS
 	get_tree().auto_accept_quit=false
+	migrate_previous_title()
 	settings.load_settings();settings.apply()
 	ui_theme=Theme.new();ui_theme.default_font=preload("res://assets/font.otf");ui_theme.default_font_size=18
 	var style=StyleBoxFlat.new();style.bg_color=Color("354a57")
@@ -32,6 +33,23 @@ func _ready():
 	content=VBoxContainer.new();content.size_flags_horizontal=Control.SIZE_EXPAND_FILL;content.add_theme_constant_override("separation",18);scroll.add_child(content)
 	show_title()
 
+func migrate_previous_title():
+	# Desktop builds before the title change used the project name as their save folder.
+	var previous=OS.get_user_data_dir().get_base_dir().path_join("星灯回转锅 · Demo")
+	if not DirAccess.dir_exists_absolute(previous): return
+	var paths=["settings.cfg","starpot.json","starpot.json.bak"]
+	for slot in range(1,4):
+		paths.append("saves/slot_%d.json"%slot)
+		paths.append("saves/slot_%d.json.bak"%slot)
+	for path in paths:
+		var source=previous.path_join(path)
+		var target=OS.get_user_data_dir().path_join(path)
+		if FileAccess.file_exists(source) and not FileAccess.file_exists(target):
+			DirAccess.make_dir_recursive_absolute(target.get_base_dir())
+			var error=DirAccess.copy_absolute(source,target+".importing")
+			if error==OK: error=DirAccess.rename_absolute(target+".importing",target)
+			if error!=OK: push_warning("旧档导入失败："+path)
+
 func text(value: String, size: int=18) -> Label:
 	var label=Label.new();label.text=value;label.add_theme_font_size_override("font_size",size);label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(label);return label
@@ -49,7 +67,7 @@ func begin_screen(name: String, heading: String, caption: String=""):
 
 func show_title():
 	get_tree().paused=false
-	begin_screen("title","星灯回转锅","白天筹备，夜晚营业。经营属于你的异世界小店。")
+	begin_screen("title","星灯火锅店","白天筹备，夜晚营业。经营属于你的异世界小店。")
 	if not title_message.is_empty(): text(title_message).modulate=Color("e5c58e")
 	for slot in range(1,4):
 		var info=saves.info(slot)

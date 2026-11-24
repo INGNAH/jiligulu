@@ -164,7 +164,7 @@ func rebuild():
 			piece(scenery,q+Vector3(0,.23,0),Vector3(.49,.45,.46),WOOD)
 			var back_size=Vector3(.69,.53,.1) if outward.z!=0 else Vector3(.1,.53,.66)
 			piece(scenery,q+outward*.29+Vector3(0,.78,0),back_size,WOOD)
-	for f in l.feeders: station(world(l.center(Vector2i(f.x,f.y))),"补",JADE,.8)
+	for f in l.stations: station(world(l.center(Vector2i(f.x,f.y))),"补",JADE,.8)
 	for f in l.facilities: station(world(l.center(Vector2i(f.x,f.y))),game.FACILITY[int(f.kind)],JADE,.85)
 	station(world(Vector2(170,220)),"月桥集市",Color("#81a27e"),3.4)
 	station(world(Vector2(190,580)),"料理台",JADE,3.5)
@@ -207,5 +207,6 @@ func sync():
 		meals.append(plate)
 	while meals.size()>game.plates.size(): meals.pop_back().queue_free()
 	for i in range(meals.size()):
-		var p=game.plates[i];meals[i].position=world(game.layout.center(game.layout.routes[p.route].cell),1.01)
+		var p=game.plates[i];meals[i].position=world(game.layout.center(game.layout.station_cell(p.station)),1.01)
+		meals[i].get_child(0).visible=p.portions>0
 		meals[i].get_child(0).material_override=material(game.COLORS[int(p.food)%6])

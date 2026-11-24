@@ -5,13 +5,36 @@ const CELL = 40
 const WIDTH = 21
 const HEIGHT = 12
 const ZONE_COLORS = [Color("66b9b0"),Color("c695c8"),Color("dfb96a")]
+const DEFAULT_KITCHEN={"x":1,"y":9,"rot":2,"span":2}
+var kitchens=[]
+var pickup=Vector2i(1,9)
+func kitchen_cell()->Vector2i:
+	return Vector2i(kitchens[0].x,kitchens[0].y)
+
+func move_kitchen(c:Vector2i,rot:int)->bool:
+	var next={"x":c.x,"y":c.y,"rot":rot,"span":2}
+	var old=kitchens.pop_back()
+	for tile in footprint(next):
+		if not floor_at(tile) or partitions.get(tile) in ["wall","window"] or facility_at(tile)>=0 or table_at(tile)>=0 or tile==Vector2i(20,11):
+			kitchens.append(old)
+			return false
+		for f in stations:
+			if tile in footprint(f):
+				kitchens.append(old)
+				return false
+	kitchens.append(next)
+	return true
+
+var service_spots = {}
+var service_obstacles = {}
 var expanded=false
 func room_width()->int: return WIDTH+(3 if expanded else 0)
 
 var shape = 0
 var tables: Array = []
-var feeders: Array = []
-var routes: Array = []
+var stations: Array = []
+const STATION_CAPACITY=8
+var table_stations={}
 var errors: Array = []
 
 func _init(): reset()
@@ -35,7 +58,8 @@ func chairs(t: Dictionary) -> Array:
 var partitions={}
 func paint_partition(c:Vector2i,kind:String)->bool:
 	if not floor_at(c) or c in [Vector2i(0,11),Vector2i(20,11)]: return false
-	if not partitions.has(c) and occupied(c): return false
+	if c in footprint(kitchens[0]) and kind!="staff": return false
+	if not partitions.has(c) and occupied(c) and c not in footprint(kitchens[0]): return false
 	partitions[c]=kind
 	return true
 
@@ -62,10 +86,10 @@ func facility_at(c: Vector2i) -> int:
 func place_facility(c:Vector2i,kind:int,rot:int=0)->bool:
 	return place_fixture(facilities,{"x":c.x,"y":c.y,"kind":kind,"rot":rot,"span":1 if kind==4 else 2})
 func occupied(c: Vector2i, skip: int=-1) -> bool:
-	if partitions.has(c) or facility_at(c)>=0: return true
+	if (not kitchens.is_empty() and c in footprint(kitchens[0])) or partitions.has(c) or facility_at(c)>=0: return true
 	for i in range(tables.size()):
 		if i!=skip and (c in body(tables[i]) or c in chairs(tables[i])): return true
-	for f in feeders:
+	for f in stations:
 		if c in footprint(f): return true
 	return false
 func table_valid(t: Dictionary, skip: int=-1) -> bool:
@@ -83,27 +107,28 @@ func table_at(c: Vector2i) -> int:
 	for i in range(tables.size()):
 		if c in body(tables[i]) or c in chairs(tables[i]): return i
 	return -1
-func place_feeder(c:Vector2i,zone:int,rot:int=0)->bool:
-	return place_fixture(feeders,{"x":c.x,"y":c.y,"zone":zone,"rot":rot,"span":2})
+func place_station(c:Vector2i,zone:int,rot:int=0)->bool:
+	return place_fixture(stations,{"x":c.x,"y":c.y,"zone":zone,"rot":rot,"span":2})
 func erase(c: Vector2i):
 	if partitions.erase(c): return
 	var station=facility_at(c)
 	if station>=0: facilities.remove_at(station); return
 	var i=table_at(c)
 	if i>=0: tables.remove_at(i); return
-	for j in range(feeders.size()-1,-1,-1):
-		if c in footprint(feeders[j]): feeders.remove_at(j)
+	for j in range(stations.size()-1,-1,-1):
+		if c in footprint(stations[j]): stations.remove_at(j)
 func walkable(c:Vector2i,staff:bool=false)->bool:
+	if c==footprint(kitchens[0]).back() or (not staff and c==kitchen_cell()): return false
 	if not staff and partitions.get(c)=="staff": return false
 	if not floor_at(c) or partitions.get(c) in ["wall","window"]: return false
-	for items in [facilities,feeders]:
+	for items in [facilities,stations]:
 		for f in items:
 			if int(f.get("span",1))>1 and c==footprint(f).back(): return false
 	for t in tables:
 		if c in body(t): return false
 	return true
-func path(a:Vector2i,b:Vector2i,staff:bool=false)->Array:
-	if not walkable(a,staff) or not walkable(b,staff): return []
+func path(a:Vector2i,b:Vector2i,staff:bool=false,blocked:Dictionary={})->Array:
+	if blocked.has(a) or blocked.has(b) or not walkable(a,staff) or not walkable(b,staff): return []
 	var queue=[a]
 	var previous={a:a}
 	var index=0
@@ -114,9 +139,10 @@ func path(a:Vector2i,b:Vector2i,staff:bool=false)->Array:
 			while result.back()!=a: result.append(previous[result.back()])
 			result.reverse(); return result
 		for n in neighbors(c):
-			if walkable(n,staff) and not previous.has(n): previous[n]=c; queue.append(n)
+			if not previous.has(n) and not blocked.has(n) and walkable(n,staff): previous[n]=c; queue.append(n)
 	return []
 func reset():
+	kitchens=[DEFAULT_KITCHEN.duplicate()]
 	partitions.clear()
 	for y in range(8,12):
 		for x in range(2): partitions[Vector2i(x,y)]="staff"
@@ -124,68 +150,101 @@ func reset():
 	partitions[Vector2i(1,7)]="window"
 	partitions[Vector2i(0,7)]="wall"
 	facilities.clear()
-	shape=0; tables.clear(); feeders.clear()
+	shape=0; tables.clear(); stations.clear()
 	for a in [[2,2,2,0],[5,2,2,0],[3,7,0,0],[13,2,2,1],[16,2,2,1],[14,7,0,1]]:
 		tables.append({"x":a[0],"y":a[1],"rot":a[2],"zone":a[3]})
 	facilities=[{"x":7,"y":9,"kind":0},{"x":10,"y":7,"kind":1},{"x":17,"y":9,"kind":2}]
-	feeders=[{"x":0,"y":5,"zone":0},{"x":11,"y":5,"zone":1}]
+	stations=[{"x":0,"y":5,"zone":0},{"x":11,"y":5,"zone":1}]
 	for f in facilities: f.span=2;f.rot=0
-	for f in feeders: f.span=2;f.rot=1
+	for f in stations: f.span=2;f.rot=1
 	compile()
 func compile() -> bool:
-	routes.clear(); errors.clear()
-	for items in [facilities,feeders]:
+	errors.clear(); table_stations.clear()
+	service_spots.clear()
+	service_obstacles.clear()
+	for table in tables:
+		for chair in chairs(table): service_obstacles[chair]=true
+	for fixture in facilities+stations:
+		for tile in footprint(fixture): service_obstacles[tile]=true
+	pickup=kitchen_cell()
+	var shortest=[]
+	for window in partitions:
+		if partitions[window]!="window": continue
+		for tile in neighbors(window):
+			if partitions.get(tile)!="staff" and tile!=kitchen_cell(): continue
+			var route=path(kitchen_cell(),tile,true,service_obstacles)
+			if not route.is_empty() and (shortest.is_empty() or route.size()<shortest.size()): shortest=route
+	if not shortest.is_empty(): pickup=shortest.back()
+	elif partitions.values().has("window"): errors.append("出餐窗旁需要一格与料理台相通的员工地板。")
+	for items in [facilities,stations]:
 		for f in items:
 			for tile in footprint(f):
 				if not floor_at(tile): errors.append("工作台占地超出房型。");break
 	for f in facilities:
 		if path(Vector2i(20,11),Vector2i(f.x,f.y)).is_empty(): errors.append("自取或等候设施没有可达通道")
-	for f in feeders:
-		var station=Vector2i(f.x,f.y)
-		if path(Vector2i(20,11),station).is_empty(): errors.append("食材台需要顾客通道。")
-		routes.append({"zone":f.zone,"cell":station,"feeders":[{"cell":station,"index":0}],"capacity":8})
+	for i in range(stations.size()):
+		var point=station_cell(i)
+		if path(Vector2i(20,11),point).is_empty(): errors.append("食材台需要顾客通道。")
+		if path(kitchen_cell(),point,true).is_empty(): errors.append("食材台需要与厨房相通。")
 	if tables.is_empty(): errors.append("至少放一张桌子。")
 	for i in range(tables.size()):
 		var t=tables[i]
 		if not table_valid(t,i): errors.append("第%d张桌椅重叠或超出房型。"%(i+1))
-		if route_for_table(t)<0: errors.append("第%d张桌所在分区需要食材台。"%(i+1))
+		var best_distance=INF
+		for station in range(stations.size()):
+			if stations[station].zone!=t.zone: continue
+			var walk=path(chairs(t)[0],station_cell(station))
+			if not walk.is_empty() and walk.size()<best_distance:
+				best_distance=walk.size()
+				table_stations[Vector2i(t.x,t.y)]=station
+		if station_for_table(t)<0: errors.append("第%d张桌所在分区需要食材台。"%(i+1))
 		for c in chairs(t):
 			if path(Vector2i(20,11),c).is_empty(): errors.append("第%d张桌的座位无法从入口走到。"%(i+1));break
-	for f in feeders:
-		var c=Vector2i(f.x,f.y)
-		if not floor_at(c) or path(Vector2i(0,11),c,true).is_empty(): errors.append("补餐点超出房型，或厨房通道被堵住。")
+			var best=[]
+			for tile in neighbors(c):
+				var approach=path(pickup,tile,true,service_obstacles)
+				if not approach.is_empty() and (best.is_empty() or approach.size()<best.size()): best=approach
+			if best.is_empty(): errors.append("第%d张桌旁需要留出员工能走到的服务位。"%(i+1))
+			else: service_spots[c]=best.back()
 	return errors.is_empty()
 func zone_name(z: int) -> String: return ["青叶","紫月","金穗"][z]
 func facing(t:Dictionary)->Vector2i:
 	return [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT][int(t.rot)]
 
-func route_for_table(t:Dictionary)->int:
-	var closest=-1
-	var distance=INF
-	for i in routes.size():
-		var d=center(routes[i].cell).distance_squared_to(center(body(t)[0]))
-		if routes[i].zone==t.zone and d<distance: closest=i;distance=d
-	return closest
+func station_cell(index:int)->Vector2i:
+	return Vector2i(stations[index].x,stations[index].y)
+
+func station_for_table(t:Dictionary)->int:
+	return table_stations.get(Vector2i(t.x,t.y),-1)
 
 func snapshot() -> Dictionary:
 	var painted=[]
 	for c in partitions: painted.append([c.x,c.y,partitions[c]])
-	return {"expanded":expanded,"partitions":painted,"facilities":facilities.duplicate(true),"shape":shape,"tables":tables.duplicate(true),"belts":[],"feeders":feeders.duplicate(true)}
+	return {"kitchen":kitchens[0].duplicate(),"expanded":expanded,"partitions":painted,"facilities":facilities.duplicate(true),"shape":shape,"tables":tables.duplicate(true),"stations":stations.duplicate(true)}
+static func upgrade_snapshot(data:Dictionary)->Dictionary:
+	var result={}
+	for key in ["kitchen","expanded","partitions","facilities","shape","tables"]:
+		if data.has(key): result[key]=data[key]
+	result.stations=data.get("stations",data.get("feeders",[]))
+	return result.duplicate(true)
+
 func restore(data: Dictionary):
+	var fdata=data.get("kitchen",DEFAULT_KITCHEN)
+	kitchens=[{"x":int(fdata.x),"y":int(fdata.y),"rot":int(fdata.rot),"span":2}]
 	expanded=data.get("expanded",false)
 	facilities=data.get("facilities",[]).duplicate(true)
 	for f in facilities:
 		for key in ["x","y","kind"]: f[key]=int(f[key])
 	shape=clampi(int(data.get("shape",0)),0,2)
-	tables=data.get("tables",[]).duplicate(true);feeders=data.get("feeders",[]).duplicate(true)
+	tables=data.get("tables",[]).duplicate(true);stations=data.get("stations",data.get("feeders",[])).duplicate(true)
 	for t in tables:
 		for k in ["x","y","rot","zone"]: t[k]=int(t[k])
 		t.rot=int(t.rot) & 2
-	for f in feeders:
+	for f in stations:
 		for k in ["x","y","zone"]: f[k]=int(f[k])
 	partitions.clear()
 	for tile in data.get("partitions",[]): partitions[Vector2i(int(tile[0]),int(tile[1]))]=tile[2]
-	for items in [facilities,feeders]:
+	for items in [facilities,stations]:
 		for f in items:
 			for key in ["rot","span"]:
 				if f.has(key): f[key]=int(f[key])

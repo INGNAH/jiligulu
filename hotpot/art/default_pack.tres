@@ -15,14 +15,8 @@
 [ext_resource type="Texture2D" path="res://art/imported/temp01/item6.png" id="tex_item6"]
 [ext_resource type="Texture2D" path="res://art/imported/temp01/item7.png" id="tex_item7"]
 [ext_resource type="Texture2D" path="res://art/imported/temp01/item8.png" id="tex_item8"]
-[ext_resource type="Texture2D" path="res://art/imported/temp02/es.png" id="tx_es"]
-[ext_resource type="Texture2D" path="res://art/imported/temp02/ew.png" id="tx_ew"]
 [ext_resource type="Texture2D" path="res://art/imported/temp02/floor.png" id="tx_floor"]
 [ext_resource type="Texture2D" path="res://art/imported/temp02/manager.png" id="tx_manager"]
-[ext_resource type="Texture2D" path="res://art/imported/temp02/ne.png" id="tx_ne"]
-[ext_resource type="Texture2D" path="res://art/imported/temp02/ns.png" id="tx_ns"]
-[ext_resource type="Texture2D" path="res://art/imported/temp02/nw.png" id="tx_nw"]
-[ext_resource type="Texture2D" path="res://art/imported/temp02/sw.png" id="tx_sw"]
 [sub_resource type="Resource" id="table"]
 script = ExtResource("sprite")
 frames = Array[Texture2D]([ExtResource("tex_table")])
@@ -107,18 +101,6 @@ frames = Array[Texture2D]([ExtResource("tex_item8")])
 anchor = Vector2(208.5,250.79999999999998)
 display_scale = Vector2(0.06235011990407674,0.06235011990407674)
 pixel_art = true
-[sub_resource type="Resource" id="sp_es"]
-script = ExtResource("sprite")
-frames = Array[Texture2D]([ExtResource("tx_es")])
-anchor = Vector2(40.0,40.0)
-display_scale = Vector2(0.5,0.5)
-offset = Vector2(0,-22)
-[sub_resource type="Resource" id="sp_ew"]
-script = ExtResource("sprite")
-frames = Array[Texture2D]([ExtResource("tx_ew")])
-anchor = Vector2(40.0,40.0)
-display_scale = Vector2(0.5,0.5)
-offset = Vector2(0,-22)
 [sub_resource type="Resource" id="sp_floor"]
 script = ExtResource("sprite")
 frames = Array[Texture2D]([ExtResource("tx_floor")])
@@ -131,30 +113,6 @@ frames = Array[Texture2D]([ExtResource("tx_manager")])
 anchor = Vector2(14, 50)
 display_scale = Vector2(2.4,2.4)
 offset = Vector2(0,0)
-[sub_resource type="Resource" id="sp_ne"]
-script = ExtResource("sprite")
-frames = Array[Texture2D]([ExtResource("tx_ne")])
-anchor = Vector2(40.0,40.0)
-display_scale = Vector2(0.5,0.5)
-offset = Vector2(0,-22)
-[sub_resource type="Resource" id="sp_ns"]
-script = ExtResource("sprite")
-frames = Array[Texture2D]([ExtResource("tx_ns")])
-anchor = Vector2(40.0,40.0)
-display_scale = Vector2(0.5,0.5)
-offset = Vector2(0,-22)
-[sub_resource type="Resource" id="sp_nw"]
-script = ExtResource("sprite")
-frames = Array[Texture2D]([ExtResource("tx_nw")])
-anchor = Vector2(40.0,40.0)
-display_scale = Vector2(0.5,0.5)
-offset = Vector2(0,-22)
-[sub_resource type="Resource" id="sp_sw"]
-script = ExtResource("sprite")
-frames = Array[Texture2D]([ExtResource("tx_sw")])
-anchor = Vector2(40.0,40.0)
-display_scale = Vector2(0.5,0.5)
-offset = Vector2(0,-22)
 [resource]
 script = ExtResource("pack")
-sprites = {"belt/sw": SubResource("sp_sw"), "belt/nw": SubResource("sp_nw"), "belt/ns": SubResource("sp_ns"), "belt/ne": SubResource("sp_ne"), "character/player/idle": SubResource("sp_manager"), "environment/floor": SubResource("sp_floor"), "belt/ew": SubResource("sp_ew"), "belt/es": SubResource("sp_es"), "furniture/table/0": SubResource("table"), "furniture/table/2": SubResource("table"), "furniture/chair/2": SubResource("chair"), "furniture/feeder": SubResource("feeder"), "furniture/kitchen": SubResource("kitchen"), "portrait/lumi/neutral": SubResource("lumi"), "food/0": SubResource("item0"), "food/1": SubResource("item1"), "food/2": SubResource("item2"), "food/3": SubResource("item3"), "food/4": SubResource("item4"), "food/5": SubResource("item5"), "food/6": SubResource("item6"), "prop/hotpot": SubResource("item7"), "prop/plate": SubResource("item8")}
+sprites = {"character/player/idle": SubResource("sp_manager"), "environment/floor": SubResource("sp_floor"), "furniture/table/0": SubResource("table"), "furniture/table/2": SubResource("table"), "furniture/chair/2": SubResource("chair"), "furniture/feeder": SubResource("feeder"), "furniture/kitchen": SubResource("kitchen"), "portrait/lumi/neutral": SubResource("lumi"), "food/0": SubResource("item0"), "food/1": SubResource("item1"), "food/2": SubResource("item2"), "food/3": SubResource("item3"), "food/4": SubResource("item4"), "food/5": SubResource("item5"), "food/6": SubResource("item6"), "prop/hotpot": SubResource("item7"), "prop/plate": SubResource("item8")}

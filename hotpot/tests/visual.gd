@@ -29,7 +29,7 @@ func run():
 	assert(game.start_business())
 	for i in range(6): game.spawn_guest()
 	for r in range(2):
-		for i in range(6): game.add_plate(r,i,i*3)
+		for i in range(6): game.add_plate(r,i)
 	for i in range(100): game.tick_business(0.1)
 	await shot("core-business")
 	game.show_open()

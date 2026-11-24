@@ -38,19 +38,45 @@ func validate(data) -> String:
 		if not entry is Dictionary: return "经营历史条目无效"
 		if not integer(entry.get("day"),previous_day+1,int(data.day)): return "经营历史日期无效"
 		previous_day=int(entry.day)
-		for key in ["income","spending","tips","served","score_total","plates","tables","routes"]:
+		for key in ["income","spending","tips","served","score_total","plates","tables"]:
 			if not integer(entry.get(key),0,1000000000): return "经营历史数值无效"
+		if not integer(entry.get("station_count",entry.get("routes")),0,512): return "食材台数量无效"
 		if entry.tips>entry.income or entry.score_total>entry.served*100: return "经营历史统计不一致"
 		if not integer(entry.get("price"),18,30) or not array_counts(entry.get("dishes"),7): return "经营历史菜品无效"
 		if entry.dishes.reduce(func(a,b):return a+b,0)!=entry.plates: return "经营历史销量不一致"
 		if not entry.get("zones") is Array or entry.zones.size()!=3: return "经营历史分区无效"
+		var results=entry.get("table_results",{})
+		if not results is Dictionary or results.size()>512: return "餐桌统计无效"
+		for key in results:
+			var row=results[key]
+			if not str(key).is_valid_int() or not row is Dictionary or not integer(row.get("visits"),1,1000000) or not integer(row.get("score"),0,100000000): return "餐桌统计无效"
+			if not (row.get("wait") is int or row.get("wait") is float) or not is_finite(float(row.wait)) or row.wait<0: return "餐桌等待无效"
 		for zone in entry.zones:
 			if not zone is Dictionary: return "经营历史分区无效"
 			for key in ["visits","score","meals","arrivals"]:
 				if not integer(zone.get(key),0,1000000000): return "经营历史分区数值无效"
+			for field in ["first_wait","side_walk"]:
+				var duration=zone.get(field,0)
+				if not (duration is int or duration is float) or not is_finite(float(duration)) or duration<0: return "分区动线统计无效"
 			var hungry=zone.get("hungry")
 			if not (hungry is int or hungry is float) or not is_finite(float(hungry)) or hungry<0 or hungry>1000000000: return "经营历史等待时间无效"
 	if not integer(data.get("reputation",70),0,100) or not data.get("event_booked",false) is bool or not data.get("bulletin","") is String: return "口碑数据无效"
+	if data.has("regular_menu"):
+		var menu=data.regular_menu
+		if not menu is Array or menu.size()!=7: return "普通菜单无效"
+		for value in menu:
+			if not value is bool: return "普通菜单无效"
+	if data.has("formulas"):
+		var book=data.formulas
+		if not book is Array or book.size()!=3: return "菜谱记录无效"
+		var recipes=preload("res://systems/recipes.gd")
+		for j in range(book.size()):
+			if book[j]==null: continue
+			if not book[j] is Array or book[j].size()>6: return "配方无效"
+			var seen=recipes.CORES[j].duplicate()
+			for item in book[j]:
+				if not integer(item,0,5) or int(item) in seen or recipes.TAGS[int(item)] in recipes.FORBIDDEN[j]: return "配方加料无效"
+				seen.append(int(item))
 	var offerings=data.get("offerings",[true,true,true])
 	if not offerings is Array or offerings.size()!=3: return "菜单数据无效"
 	for on_menu in offerings:
@@ -64,23 +90,21 @@ func validate(data) -> String:
 
 func validate_layout(layout) -> String:
 	if not layout is Dictionary or not integer(layout.get("shape",-1),0,2): return "房型数据无效"
-	for key in ["tables","feeders","belts"]:
-		if not layout.get(key) is Array or layout[key].size()>512: return "布局数据无效"
+	var stations=layout.get("stations",layout.get("feeders"))
+	if not layout.get("tables") is Array or layout.tables.size()>512: return "桌椅数据无效"
+	if not stations is Array or stations.size()>512: return "食材台数据无效"
 	var max_x=23 if layout.get("expanded",false) else 20
+	if layout.has("kitchen"):
+		var k=layout.kitchen
+		if not k is Dictionary or not integer(k.get("x"),0,max_x) or not integer(k.get("y"),0,11) or not integer(k.get("rot"),0,3): return "料理台位置无效"
 	var facilities=layout.get("facilities",[])
 	if not facilities is Array or facilities.size()>252: return "自取设施无效"
 	for f in facilities:
 		if not f is Dictionary or not integer(f.get("kind"),0,4) or not integer(f.get("x"),0,max_x) or not integer(f.get("y"),0,11): return "自取设施无效"
-	var occupied={}
 	for t in layout.tables:
 		if not t is Dictionary or not integer(t.get("x"),0,max_x) or not integer(t.get("y"),0,11) or not integer(t.get("rot"),0,3) or not integer(t.get("zone"),0,2): return "桌椅数据无效"
-	for f in layout.feeders:
-		if not f is Dictionary or not integer(f.get("x"),0,max_x) or not integer(f.get("y"),0,11) or not integer(f.get("zone"),0,2): return "补餐点数据无效"
-	for b in layout.belts:
-		if not b is Array or b.size()!=3 or not integer(b[0],0,max_x) or not integer(b[1],0,11) or not integer(b[2],0,2): return "餐带数据无效"
-		var pos=Vector2i(b[0],b[1])
-		if occupied.has(pos): return "餐带坐标重复"
-		occupied[pos]=true
+	for f in stations:
+		if not f is Dictionary or not integer(f.get("x"),0,max_x) or not integer(f.get("y"),0,11) or not integer(f.get("zone"),0,2): return "食材台数据无效"
 	return ""
 
 func read_file(path: String) -> Dictionary:

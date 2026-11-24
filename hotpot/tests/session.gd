@@ -22,7 +22,7 @@ func run():
 	check(not store.validate(bad).is_empty(),"unknown future schema rejected")
 	bad=data.duplicate(true);bad.phase="营业"
 	check(not store.validate(bad).is_empty(),"partial live-business snapshots rejected")
-	bad=data.duplicate(true);bad.layout={"shape":0,"tables":[{"x":0}],"belts":[],"feeders":[]}
+	bad=data.duplicate(true);bad.layout={"shape":0,"tables":[{"x":0}],"stations":[]}
 	check(not store.validate(bad).is_empty(),"malformed furniture rejected before layout restore")
 	bad=data.duplicate(true);bad.money="money"
 	check(not store.validate(bad).is_empty(),"wrong numeric types rejected")

@@ -6,7 +6,7 @@ func check(ok: bool,s: String):
 func _initialize(): call_deferred("run")
 func run():
 	var l=load("res://layout.gd").new()
-	check(l.compile() and l.tables.size()==6 and l.routes.size()==2,"starter has six independent tables, two valid loops and reachable chairs")
+	check(l.compile() and l.tables.size()==6 and l.stations.size()==2,"starter has six independent tables, two ingredient stations and reachable chairs")
 	var kitchen=Vector2i(1,8)
 	check(not l.walkable(kitchen) and l.walkable(kitchen,true),"staff-only kitchen permissions")
 	check(not l.path(Vector2i(0,11),kitchen,true).is_empty(),"kitchen worker can reach service window")
@@ -19,16 +19,18 @@ func run():
 	check(not l.place_table(Vector2i(-1,0),0,0),"out of bounds furniture rejected")
 	check(not l.place_table(Vector2i(14,10),1,2),"side-facing dining seats rejected")
 	check(l.place_table(Vector2i(14,10),2,2),"front-facing seats can be placed freely")
-	check(not l.compile(),"opening rejects tables without same-zone belt")
+	check(not l.compile(),"opening rejects tables without a station in the same zone")
 	l.restore(before)
-	check(l.place_table(Vector2i(4,7),0,0,2) and l.compile(),"move table transaction retains seat access and belt connection")
+	check(l.place_table(Vector2i(4,7),0,0,2) and l.compile(),"move table transaction retains seat access and station access")
 	l.restore(before)
 	var legacy=before.duplicate(true)
-	legacy.belts=[[3,3,0],[4,3,0]]
+	legacy.feeders=legacy.stations
+	legacy.erase("stations")
 	l.restore(legacy)
-	check(l.compile() and l.walkable(Vector2i(3,3)),"legacy rail cells become usable floor")
-	l.restore(before);l.feeders.clear()
-	check(not l.compile(),"each conveyor needs an adjacent matching feeder")
+	check(l.compile() and l.snapshot()==before,"previous layouts restore stations and use the current save schema")
+	check(l.upgrade_snapshot(legacy)==before,"saved layouts use current station names")
+	l.restore(before);l.stations.clear()
+	check(not l.compile(),"tables require a reachable ingredient station")
 	l.restore(before);l.shape=2
 	check(not l.compile() and not l.floor_at(Vector2i(15,1)),"L-shaped floor cutout invalidates furniture in missing floor")
 	l.restore(before);l.shape=1
@@ -51,8 +53,8 @@ func run():
 	check(game.held==-1 and game.ready_food[1]==20,"manager opens order menu without taking stock")
 	game.panel.hide()
 	game.employee=false
-	game.supply_outlets()
-	check(game.plates.size()==2 and game.plates[0].route==0,"outlets supply both zones without a hired runner")
+	game.tick_staff(1.0)
+	check(game.plates.is_empty() and not game.staff_carry.is_empty(),"basic attendant collects sides at the kitchen before delivery")
 	game.employee=true
 	var initial_staff=game.staff_pos
 	var walked=false
@@ -60,12 +62,12 @@ func run():
 		game.tick_business(0.1)
 		walked=walked or game.staff_pos!=initial_staff
 	check(game.service_team.size()==2 and game.guests[0].get("service","waiting") in ["ordered","preparing","served"],"tableside order taken by dedicated staff")
-	check(walked,"employee physically walks between kitchen and feeder")
+	check(walked,"employee physically walks between kitchen and station")
 	check(game.zone_stats[0].arrivals>0 and game.zone_stats[1].arrivals>0,"arrivals are distributed across independent zones")
-	# Full plates cannot silently disappear when a feeder is full.
-	var cap=game.layout.routes[0].capacity
-	while game.route_plate_count(0)<cap: game.add_plate(0,0,0)
-	check(not game.add_plate(0,0,0),"per-route plate capacity prevents overfilling")
+	# Full plates cannot silently disappear when a station is full.
+	var cap=game.layout.STATION_CAPACITY
+	while game.station_plate_count(0)<cap: game.add_plate(0,0)
+	check(not game.add_plate(0,0),"station plate capacity prevents overfilling")
 	# Compare identical meals with and without hunger penalty at settlement.
 	var guest_index=0
 	if game.guests[guest_index]==null: game.guests[guest_index]={"full":80,"capacity":80,"liked":true,"eaten":3,"score":80,"hungry":0.0}
