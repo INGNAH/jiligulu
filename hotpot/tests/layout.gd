@@ -19,7 +19,7 @@ func run():
 	check(not l.place_table(Vector2i(-1,0),0,0),"out of bounds furniture rejected")
 	check(not l.place_table(Vector2i(14,10),1,2),"side-facing dining seats rejected")
 	check(l.place_table(Vector2i(14,10),2,2),"front-facing seats can be placed freely")
-	check(not l.compile(),"opening rejects tables without a station in the same zone")
+	check(l.compile() and l.station_for_table(l.tables.back())>=0,"a new zone uses the shared stations")
 	l.restore(before)
 	check(l.place_table(Vector2i(4,7),0,0,2) and l.compile(),"move table transaction retains seat access and station access")
 	l.restore(before)
@@ -30,7 +30,7 @@ func run():
 	check(l.compile() and l.snapshot()==before,"previous layouts restore stations and use the current save schema")
 	check(l.upgrade_snapshot(legacy)==before,"saved layouts use current station names")
 	l.restore(before);l.stations.clear()
-	check(not l.compile(),"tables require a reachable ingredient station")
+	check(l.compile(),"table service can open without optional side stations")
 	l.restore(before);l.shape=2
 	check(not l.compile() and not l.floor_at(Vector2i(15,1)),"L-shaped floor cutout invalidates furniture in missing floor")
 	l.restore(before);l.shape=1

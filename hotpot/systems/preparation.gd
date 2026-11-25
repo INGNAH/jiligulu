@@ -10,11 +10,12 @@ static func plan(raw: Array, ready: Array, prices: Array, guests: int) -> Dictio
 	var cost=0
 	var remaining=missing
 	for i in range(6): targets.append(int(ready[i]))
-	# Balance the available menu without discarding existing stock.
+	# Beef and shrimp are individually ordered. A tray of vegetables feeds several diners.
+	var weights=[1,5,4,1,1,1]
 	while remaining>0:
 		var chosen=0
 		for i in range(1,6):
-			if targets[i]<targets[chosen]: chosen=i
+			if targets[i]*weights[chosen]<targets[chosen]*weights[i]: chosen=i
 		targets[chosen]+=2
 		remaining-=2
 	for i in range(6):
