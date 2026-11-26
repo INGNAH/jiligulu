@@ -23,6 +23,11 @@ func validate(data) -> String:
 		if data.has(pair[0]) and not array_counts(data[pair[0]],pair[1]): return "食材库存或统计无效"
 	for key in ["mastery","affection","income","spending","tips","served","satisfaction","staff_exp"]:
 		if data.has(key) and not integer(data[key],0,1000000000): return "经营数值无效："+key
+	if data.has("mastery_by_dish"):
+		var book=data.mastery_by_dish
+		if not book is Dictionary or book.size()>7: return "熟练度记录无效"
+		for key in book:
+			if not str(key).is_valid_int() or not integer(int(str(key)),0,6) or not integer(book[key],0,1000000000): return "熟练度记录无效"
 	for key in ["employee","decor","special_done"]:
 		if data.has(key) and not data[key] is bool: return "状态数据无效："+key
 	if data.get("phase","准备") not in ["准备","结算"]: return "此存档没有可恢复的阶段"

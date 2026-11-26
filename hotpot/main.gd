@@ -106,7 +106,21 @@ var money = 150
 var day = 1
 var raw = [0,0,0,0,0,0]
 var ready_food = [0,0,0,0,0,0,0]
-var mastery = 0
+# Per stock-slot cooking mastery (0-5 basic ingredients, 6 = stewed frost beef).
+var mastery_by_dish: Dictionary = {}
+# Legacy single mastery maps to the stew slot.
+var mastery: int:
+	get: return int(mastery_by_dish.get(STEW_SLOT,0))
+	set(value): mastery_by_dish[STEW_SLOT]=int(value)
+const STEW_SLOT=6
+const QUICK_MASTERY=3
+# Timing windows on the 0-100 heat bar. Basic plating is forgiving, the stew is tight.
+const WINDOW_NORMAL=Vector2i(30,80)
+const WINDOW_SIGNATURE=Vector2i(40,70)
+# Skilled plating yields 3 plates per raw portion, a miss yields 1. Plain plating always yields 2.
+const COOK_YIELD_SUCCESS=3
+const COOK_YIELD_FAIL=1
+var cook_slot=-1
 var affection = 0
 var employee = false
 var decor = false
@@ -955,9 +969,11 @@ func show_kitchen():
 	button("按预计客流制定备菜计划",show_preparation)
 	for i in range(6):
 		button("装盘 %s（饱腹%d） 原料%d / 待上%d" % [ING[i],FILL[i],raw[i],ready_food[i]],func(): prepare(i); show_kitchen())
+		var skilled=mastery_by_dish.get(i,0)>=QUICK_MASTERY
+		button("%s %s · 1份出%d盘  [熟练 %d/%d]" % ["快速精装" if skilled else "火候精装",ING[i],COOK_YIELD_SUCCESS,mini(int(mastery_by_dish.get(i,0)),QUICK_MASTERY),QUICK_MASTERY],cook_dish.bind(i))
 	button("全部基础食材批量装盘",func(): prepare_all();show_kitchen())
 	button("清炖霜牛：牛肉 + 豆腐  [熟练 %d/3]" % mastery,show_cook)
-	line("清炖霜牛标签：肉类 · 清淡。勇者喜欢它。\n装盘、烹饪在开店前完成；营业时在料理台点击对应厨具。")
+	line("普通装盘稳定出2盘；火候精装命中出%d盘、失手只出%d盘，熟练3次后可快速精装。\n清炖霜牛标签：肉类 · 清淡。勇者喜欢它。"%[COOK_YIELD_SUCCESS,COOK_YIELD_FAIL])
 	close_button()
 
 func change_input(items:Array,food:int):
@@ -1021,20 +1037,58 @@ func prepare(i: int) -> bool:
 	return true
 
 func show_cook():
-	if raw[1] < 1 or raw[4] < 1: notify("需要 1 份牛肉和 1 份豆腐。") ; return
-	if mastery >= 3:
-		finish_cook(true)
+	cook_dish(STEW_SLOT)
+
+func cook_window(slot:int)->Vector2i:
+	return WINDOW_SIGNATURE if slot==STEW_SLOT else WINDOW_NORMAL
+
+func cook_inputs(slot:int)->Array:
+	return [1,4] if slot==STEW_SLOT else [slot]
+
+func can_cook(slot:int)->bool:
+	if phase!="准备" or slot<0 or slot>STEW_SLOT: return false
+	return cook_inputs(slot).all(func(food):return raw[food]>=1)
+
+# Opens the heat-bar minigame for one stock slot, or finishes instantly once mastered.
+func cook_dish(slot:int):
+	if not can_cook(slot):
+		notify("需要 1 份牛肉和 1 份豆腐。" if slot==STEW_SLOT else "缺少%s原料，或营业中不能备菜。"%ING[clampi(slot,0,5)])
+		return
+	if int(mastery_by_dish.get(slot,0))>=QUICK_MASTERY:
+		finish_cook_dish(slot,1)
 		show_kitchen()
 		return
-	clear_panel("小锅慢炖 · 火候小游戏")
-	line("在火候条 40—70 时点击出锅。\n成功：2 盘清炖霜牛，熟练度 +1。\n失误：原料仍变成 2 盘牛肉，不会白白丢失。")
+	var window=cook_window(slot)
+	cook_slot=slot
+	clear_panel(("小锅慢炖" if slot==STEW_SLOT else "火候精装 · "+ING[slot])+" · 火候小游戏")
+	if slot==STEW_SLOT: line("在火候条 %d—%d 时点击出锅。\n成功：2 盘清炖霜牛，熟练度 +1。\n失误：原料仍变成 2 盘牛肉，不会白白丢失。"%[window.x,window.y])
+	else: line("在火候条 %d—%d 时点击出锅。\n成功：1 份原料出 %d 盘，熟练度 +1。\n失误：只出 %d 盘。"%[window.x,window.y,COOK_YIELD_SUCCESS,COOK_YIELD_FAIL])
 	cook_cursor = ProgressBar.new()
 	cook_cursor.custom_minimum_size = Vector2(380,40)
 	panel_box.add_child(cook_cursor)
 	cook_time = 0
 	cooking = true
-	button("现在出锅！",func(): finish_cook(cook_cursor.value >= 40 and cook_cursor.value <= 70); show_kitchen())
+	button("现在出锅！",func(): finish_cook_dish(slot,heat_quality(slot,cook_cursor.value)); show_kitchen())
 	close_button()
+
+func heat_quality(slot:int,heat:float)->int:
+	var window=cook_window(slot)
+	return 1 if heat>=window.x and heat<=window.y else 0
+
+# quality: 1 success, 0 miss. Returns false when nothing was cooked.
+func finish_cook_dish(slot:int,quality:int)->bool:
+	if slot==STEW_SLOT:
+		if raw[1] < 1 or raw[4] < 1: return false
+		finish_cook(quality==1)
+		return true
+	if slot<0 or slot>=6 or raw[slot]<1: return false
+	raw[slot]-=1
+	ready_food[slot]+=COOK_YIELD_SUCCESS if quality==1 else COOK_YIELD_FAIL
+	if quality==1: mastery_by_dish[slot]=int(mastery_by_dish.get(slot,0))+1
+	notify("%s精装完成，出%d盘。"%[ING[slot],COOK_YIELD_SUCCESS] if quality==1 else "火候偏了，%s只装出%d盘。"%[ING[slot],COOK_YIELD_FAIL])
+	cooking=false
+	cook_slot=-1
+	return true
 
 func finish_cook(success: bool):
 	if raw[1] < 1 or raw[4] < 1: return
@@ -1044,6 +1098,7 @@ func finish_cook(success: bool):
 	if success: mastery += 1
 	notify("炖菜完成！熟练三次后解锁快捷制作。" if success else "火候偏了，改成普通牛肉盘。")
 	cooking = false
+	cook_slot = -1
 
 func choose_facility():
 	clear_panel("自取与等候设施")
@@ -1633,7 +1688,7 @@ func serve_guest(i: int) -> bool:
 	var craved=g.get("craving","") in cooked_tags
 	order_seat=-1
 	g.bonus = true
-	g.full+=FILL[held];g.liked=g.liked or liked;cooked=-1
+	g.full+=int(Dishes.by_id(cooked).fill);g.liked=g.liked or liked;cooked=-1
 	for ingredient in reserved: food_served[ingredient]+=1
 	reserved.clear()
 	cooked_tags.clear()
@@ -1819,8 +1874,22 @@ func next_day():
 		notify("商会送来 36 金周转补助，继续试试新搭配吧。")
 	save_game()
 
+func mastery_save() -> Dictionary:
+	# JSON object keys are strings; slots are restored to ints on load.
+	var out={}
+	for slot in mastery_by_dish: out[str(slot)]=int(mastery_by_dish[slot])
+	return out
+
+func load_mastery(data: Dictionary):
+	mastery_by_dish={}
+	var saved=data.get("mastery_by_dish",{})
+	if saved is Dictionary:
+		for key in saved: mastery_by_dish[int(key)]=int(saved[key])
+	# Saves before v5 only stored the stew mastery.
+	if not mastery_by_dish.has(STEW_SLOT): mastery_by_dish[STEW_SLOT]=int(data.get("mastery",0))
+
 func snapshot() -> Dictionary:
-	return {"reputation":reputation,"bulletin":bulletin,"event_booked":event_booked,"formulas":formulas.duplicate(true),"regular_menu":regular_menu.duplicate(),"offerings":offerings.duplicate(),"version":5,"menu":menu.duplicate(true),"dishes_unlocked":dishes_unlocked.duplicate(),"layout_plans":layout_plans.duplicate(true),"history":business_history.duplicate(true),"layout":layout.snapshot(),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
+	return {"reputation":reputation,"bulletin":bulletin,"event_booked":event_booked,"formulas":formulas.duplicate(true),"regular_menu":regular_menu.duplicate(),"offerings":offerings.duplicate(),"version":5,"menu":menu.duplicate(true),"dishes_unlocked":dishes_unlocked.duplicate(),"layout_plans":layout_plans.duplicate(true),"history":business_history.duplicate(true),"layout":layout.snapshot(),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"mastery_by_dish":mastery_save(),"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
 
 func save_game() -> bool:
 	if phase=="营业":
@@ -1866,7 +1935,7 @@ func apply_save(data: Dictionary):
 	money=int(data.get("money",150));day=int(data.get("day",1))
 	raw=data.get("raw",[0,0,0,0,0,0]).map(func(n):return int(n))
 	ready_food=data.get("ready",[0,0,0,0,0,0,0]).map(func(n):return int(n))
-	mastery=int(data.get("mastery",0));affection=int(data.get("affection",0))
+	load_mastery(data);affection=int(data.get("affection",0))
 	employee=data.get("employee",false);decor=data.get("decor",false)
 	decor_pos=Vector2(data.get("decor_x",1080),data.get("decor_y",600))
 	phase=data.get("phase","准备");summary=data.get("summary","")
