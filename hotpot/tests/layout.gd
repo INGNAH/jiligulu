@@ -58,7 +58,7 @@ func run():
 	game.employee=true
 	var initial_staff=game.staff_pos
 	var walked=false
-	for i in range(120):
+	for i in range(200):
 		game.tick_business(0.1)
 		walked=walked or game.staff_pos!=initial_staff
 	check(game.service_team.size()==2 and game.guests[0].get("service","waiting") in ["ordered","preparing","served"],"tableside order taken by dedicated staff")

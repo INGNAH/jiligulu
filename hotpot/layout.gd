@@ -2,6 +2,14 @@ extends RefCounted
 # Grid coordinates are serialized as integers; no scene nodes are stored in saves.
 const ORIGIN = Vector2(340,190)
 const CELL = 40
+const DOOR=Vector2i(20,11)
+const QUEUE_SIZE=5
+func queue_tile(index:int)->Vector2i:
+	return DOOR+Vector2i.LEFT*(QUEUE_SIZE-index)
+
+func entry_area(c:Vector2i)->bool:
+	return c.y==DOOR.y and c.x>=DOOR.x-QUEUE_SIZE and c.x<=DOOR.x
+
 const WIDTH = 21
 const HEIGHT = 12
 const ZONE_COLORS = [Color("66b9b0"),Color("c695c8"),Color("dfb96a")]
@@ -16,7 +24,7 @@ func move_kitchen(c:Vector2i,rot:int)->bool:
 	var next={"x":c.x,"y":c.y,"rot":rot,"span":2}
 	var old=kitchens.pop_back()
 	for tile in footprint(next):
-		if not floor_at(tile) or partitions.get(tile) in ["wall","window"] or facility_at(tile)>=0 or table_at(tile)>=0 or tile==Vector2i(20,11):
+		if not floor_at(tile) or partitions.get(tile) in ["wall","window"] or facility_at(tile)>=0 or table_at(tile)>=0 or entry_area(tile):
 			kitchens.append(old)
 			return false
 		for f in stations:
@@ -59,6 +67,7 @@ func chairs(t: Dictionary) -> Array:
 	return result
 var partitions={}
 func paint_partition(c:Vector2i,kind:String)->bool:
+	if entry_area(c) and kind!="aisle": return false
 	if not floor_at(c) or c in [Vector2i(0,11),Vector2i(20,11)]: return false
 	if not kitchen_stored and c in footprint(kitchens[0]) and kind in ["wall","window"]: return false
 	if kind in ["wall","window"] and (facility_at(c)>=0 or table_at(c)>=0 or stations.any(func(f):return c in footprint(f))): return false
@@ -88,6 +97,7 @@ func facility_at(c: Vector2i) -> int:
 func place_facility(c:Vector2i,kind:int,rot:int=0)->bool:
 	return place_fixture(facilities,{"x":c.x,"y":c.y,"kind":kind,"rot":rot,"span":1 if kind==4 else 2})
 func occupied(c: Vector2i, skip: int=-1) -> bool:
+	if entry_area(c): return true
 	if (not kitchen_stored and not kitchens.is_empty() and c in footprint(kitchens[0])) or partitions.get(c) in ["wall","window"] or facility_at(c)>=0: return true
 	for i in range(tables.size()):
 		if i!=skip and (c in body(tables[i]) or c in chairs(tables[i])): return true
@@ -163,6 +173,10 @@ func reset():
 	compile()
 func compile() -> bool:
 	errors.clear(); table_stations.clear()
+	for x in range(QUEUE_SIZE+1):
+		var tile=DOOR+Vector2i.LEFT*x
+		if not walkable(tile) or table_at(tile)>=0:
+			errors.append("正门和等位区需要留空，请移开家具或隔墙。");break
 	if kitchen_stored: errors.append("开店前请在营业家具中放回料理台。")
 	service_spots.clear()
 	service_obstacles.clear()
@@ -189,7 +203,7 @@ func compile() -> bool:
 	for f in facilities:
 		var access=approach_cell(f,false)
 		facility_access.append(access)
-		if access==NO_ACCESS: errors.append("%s号设施旁需要留出顾客通道。"%(facility_access.size()))
+		if f.kind!=4 and access==NO_ACCESS: errors.append("%s号设施旁需要留出顾客通道。"%(facility_access.size()))
 	for f in stations:
 		var access=approach_cell(f,true)
 		station_access.append(access)

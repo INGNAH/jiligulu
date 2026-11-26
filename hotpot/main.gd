@@ -33,6 +33,7 @@ var reputation=70
 var event_booked=false
 var bulletin="今天是开业第一天。"
 var waiting=[]
+var departing=[]
 var lost=0
 var missed_taste=0
 var menu_price=24
@@ -1129,7 +1130,7 @@ func start_business() -> bool:
 	phase = "营业"
 	elapsed = 0
 	spawned = 0
-	waiting.clear();lost=0;missed_taste=0;cooked=-1
+	waiting.clear();departing.clear();lost=0;missed_taste=0;cooked=-1
 	spawn_clock = 0
 	staff_clock = 0
 	panel.hide()
@@ -1248,7 +1249,10 @@ func spawn_guest():
 	if spawned>=guest_target: return
 	var ticket=spawned
 	spawned+=1
-	waiting.append({"ticket":ticket,"patience":18+(ticket%4)*5+maxi(0,reputation-60)/4.0})
+	if waiting.size()>=layout.QUEUE_SIZE:
+		lost+=1
+		return
+	waiting.append({"position":layout.center(layout.DOOR)+Vector2(0,20),"ticket":ticket,"patience":18+(ticket%4)*5+maxi(0,reputation-60)/4.0})
 	seat_next()
 
 func seat_next():
@@ -1263,9 +1267,12 @@ func seat_next():
 	if chosen<0: return
 	var z=layout.tables[seat_tables[chosen]].zone
 	zone_stats[z].arrivals+=1
-	var ticket=int(waiting.pop_front().ticket)
+	var entry=waiting.pop_front()
+	var route=layout.guest_path(layout.cell(seats[chosen]),layout.cell(entry.position) if entry.position.y<=layout.center(layout.DOOR).y else layout.DOOR)
+	route.reverse()
+	var ticket=int(entry.ticket)
 	var wish=1 if ticket%4==2 else ticket%6
-	guests[chosen]={"ticket":ticket,"position":seats[chosen],"trip":[],"visited":[],"full":0,"capacity":68+(ticket%4)*12,"order":-1,"order_at":0.0,"liked":false,"wish":wish,"special":ticket==2,"eaten":0,"wait":0.0,"bonus":false,"score":80-maxi(0,menu_price-24),"last_meal":0.0,"hungry":0.0}
+	guests[chosen]={"ticket":ticket,"position":entry.position,"trip":route.map(layout.center),"visited":[],"full":0,"capacity":68+(ticket%4)*12,"order":-1,"order_at":0.0,"liked":false,"wish":wish,"special":ticket==2,"eaten":0,"wait":0.0,"bonus":false,"score":80-maxi(0,menu_price-24),"last_meal":0.0,"hungry":0.0}
 
 func station_plate_count(station:int)->int:
 	var count=0
@@ -1304,8 +1311,18 @@ func tick_business(dt: float):
 	for f in layout.facilities:
 		if f.kind==3: benches+=1
 	for j in range(waiting.size()-1,-1,-1):
+		var target=layout.center(layout.queue_tile(j))
+		var pos=waiting[j].position
+		if pos.y!=target.y: target=Vector2(pos.x,target.y)
+		waiting[j].position=pos.move_toward(target,dt*115)
 		waiting[j].patience-=dt*(0.55 if j<benches*2 else 1.0)
-		if waiting[j].patience<=0: waiting.remove_at(j);lost+=1
+		if waiting[j].patience<=0:
+			departing.append({"position":waiting[j].position,"trip":[layout.center(layout.DOOR),layout.center(layout.DOOR)+Vector2(0,24)]})
+			waiting.remove_at(j);lost+=1
+	for actor in departing.duplicate():
+		actor.position=actor.position.move_toward(actor.trip[0],dt*120)
+		if actor.position==actor.trip[0]: actor.trip.pop_front()
+		if actor.trip.is_empty(): departing.erase(actor)
 	for i in range(seats.size()):
 		var g = guests[i]
 		if g == null: continue
@@ -1390,6 +1407,10 @@ func tick_business(dt: float):
 			g.service="waiting"
 			g.reordered_at=g.wait
 			continue
+		if g.get("service","waiting")=="out" and (g.get("tried_side",false) or r<0):
+			g.shortage=true
+			checkout(i)
+			continue
 		var seeks_side=(wants_side or g.get("service","waiting")=="out") and g.last_meal>=5
 		if r>=0 and seeks_side and (side_plate(g,r)>=0 or (g.last_meal>=7 and SIDE_FOODS.any(func(food): return regular_menu[food]))):
 			var walk=layout.guest_path(layout.cell(seats[i]),layout.station_cell(r))
@@ -1400,7 +1421,7 @@ func tick_business(dt: float):
 				g.pickup_station=r
 	for worker in service_team: tick_table_service(worker,dt)
 	tick_staff(dt)
-	if elapsed>=150 or served>=guest_target: end_day()
+	if elapsed>=150 or (served>=guest_target and departing.is_empty()): end_day()
 
 func next_facility(g:Dictionary)->int:
 	for kind in range(3):
@@ -1606,6 +1627,7 @@ func checkout(i: int):
 			var beef=g.get("main_food",-1) in [1,6] or (g.bonus and g.order==0)
 			score+=8 if beef else -12
 			remark="冲霜牛来的，"+("吃到了牛肉。" if beef else "没尝到牛肉。主菜："+actual+"。")
+		if g.get("shortage",false): remark+=" 想点的主菜售罄了。"
 		if g.get("refill_wait",0.0)>8.0:
 			score-=mini(18,ceili((g.refill_wait-8.0)/2.0))
 			remark+=" 自取台缺菜，累计等了%d秒。"%roundi(g.refill_wait)
@@ -1623,6 +1645,10 @@ func checkout(i: int):
 	zone_stats[z].first_wait+=first_wait
 	zone_stats[z].side_walk+=g.get("walk_seconds",0.0)
 	zone_stats[z].visits+=1;zone_stats[z].score+=score;zone_stats[z].hungry+=g.hungry;zone_stats[z].meals+=g.eaten
+	if g.has("position"):
+		var route=layout.guest_path(layout.cell(g.position),layout.DOOR).map(layout.center)
+		route.append(layout.center(layout.DOOR)+Vector2(0,24))
+		departing.append({"position":g.position,"trip":route})
 	guests[i] = null
 
 func end_day():
@@ -1791,7 +1817,7 @@ func apply_save(data: Dictionary):
 	decor_pos=Vector2(data.get("decor_x",1080),data.get("decor_y",600))
 	phase=data.get("phase","准备");summary=data.get("summary","")
 	income=int(data.get("income",0));spending=int(data.get("spending",0));tips=int(data.get("tips",0));served=int(data.get("served",0));satisfaction=int(data.get("satisfaction",0))
-	menu_price=int(data.get("menu_price",24));staff_exp=int(data.get("staff_exp",0))
+	menu_price=clampi(roundi(float(data.get("menu_price",24))/3.0)*3,18,30);staff_exp=int(data.get("staff_exp",0))
 	food_served=data.get("food_served",[0,0,0,0,0,0,0]).duplicate();special_done=data.get("special_done",false)
 	guest_target=expected_guests()
 	order_seat=-1;kitchen_time=0;plates.clear();staff_carry.clear();staff_path.clear();held=-1;build_mode=false;moving_table=-1;layout_history.clear()
@@ -1881,8 +1907,16 @@ func draw_layout():
 	var facilities=["sauce","drink","ice","bench","flowers"]
 	for f in layout.facilities:
 		add_service(objects,facilities[int(f.kind)],fixture_foot(f),fixture_width(f))
-	for q in range(mini(5,waiting.size())):
-		var pos=layout.center(Vector2i(20-q,11))
+	var door=layout.center(layout.DOOR)
+	draw_rect(Rect2(door-Vector2(20,-10),Vector2(40,13)),Color("a7665f"))
+	for side in [-21,18]: draw_rect(Rect2(door+Vector2(side,-12),Vector2(4,36)),Color("91664f"))
+	text_at(door+Vector2(-12,9),"正门",10)
+	for q in layout.QUEUE_SIZE:
+		var tile=layout.center(layout.queue_tile(q))
+		draw_rect(Rect2(tile-Vector2(19,9),Vector2(38,18)),Color("987e85"))
+		text_at(tile+Vector2(-7,4),"等位" if q==0 else str(q+1),9)
+	for actor in waiting+departing if phase=="营业" else []:
+		var pos=actor.position
 		objects.append({"y":pos.y,"kind":"waiting","data":pos})
 	for t in layout.tables: objects.append({"y":layout.center(layout.body(t)[-1]).y+17,"kind":"table","data":t})
 	for t in layout.tables:

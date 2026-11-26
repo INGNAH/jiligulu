@@ -90,6 +90,7 @@ func validate(data) -> String:
 
 func validate_layout(layout) -> String:
 	if not layout is Dictionary or not integer(layout.get("shape",-1),0,2): return "房型数据无效"
+	if not layout.get("kitchen_stored",false) is bool: return "料理台收起状态无效"
 	var stations=layout.get("stations",layout.get("feeders"))
 	if not layout.get("tables") is Array or layout.tables.size()>512: return "桌椅数据无效"
 	if not stations is Array or stations.size()>512: return "食材台数据无效"

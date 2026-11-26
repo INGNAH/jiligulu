@@ -1,0 +1,18 @@
+name: Godot regression tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  restaurant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.6.3
+      - run: godot --headless --editor --path hotpot --import
+      - run: |
+          for suite in art layout session preparation shared_dining smoke ledger custom_orders recipe_research restaurant_night table_service tray_portions regression; do
+            XDG_DATA_HOME="$(mktemp -d)" timeout 90 godot --headless --path hotpot --script "res://tests/$suite.gd"
+          done

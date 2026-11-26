@@ -15,6 +15,8 @@ func run():
 	check(g.start_business(),"open")
 	var station=g.layout.station_for_table(g.layout.tables[g.seat_tables[0]])
 	var diner=g.guests[0]
+	diner.position=g.seats[0]
+	diner.trip.clear()
 	diner.service="served"
 	diner.served_at=0
 	diner.visited=[0,1,2]
