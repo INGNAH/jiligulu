@@ -112,6 +112,9 @@ func run():
 
 	# Player manual actions cover missing roles while conserving stock.
 	var stock_before=sum_ints(g.ready_food)+sum_ints(g.food_served)
+	g.player=g.layout.center(g.KITCHEN_STATION)
+	check(not g.take_main_order(zone0_seat),"cannot take table order from kitchen")
+	g.player=g.seats[zone0_seat]
 	check(g.take_main_order(zone0_seat) and g.guests[zone0_seat].get("service","")=="ordered","player manually takes main order")
 	g.player=g.layout.center(g.KITCHEN_STATION)
 	check(g.pickup_main_order(zone0_seat) and g.held>=0,"player picks up ordered main at kitchen")
@@ -123,10 +126,14 @@ func run():
 	var side_food=g.SIDE_FOODS[0]
 	var side_stock_before=g.ready_food[side_food]
 	check(g.pickup_side_tray(side_food) and g.held==side_food,"player picks up side tray")
+	check(not g.refill_station_manual(0) and g.held==side_food,"cannot refill remotely")
+	g.player=g.layout.center(g.layout.station_cell(0))
 	check(g.refill_station_manual(0) and g.held==-1 and g.ready_food[side_food]==side_stock_before-1 and g.station_plate_count(0)==1,"player manually refills side station")
 
 	# Lv.3 deliverer batches two ordered mains in one kitchen pickup.
+	g.player=g.seats[zone1_seat]
 	g.take_main_order(zone1_seat)
+	g.player=g.seats[zone0_seat]
 	g.guests[zone0_seat].service="waiting"
 	g.take_main_order(zone0_seat)
 	var deliver_worker=g.service_team[1]

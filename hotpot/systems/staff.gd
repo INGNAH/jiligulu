@@ -9,9 +9,9 @@ const MAX_EXP=60
 const EXP_PER_LEVEL=30
 
 # Unhired roles fall back to part-time kitchen help with measurable delay and lower speed/capacity.
-const UNHIRED_ORDER_DELAY=1.8
-const UNHIRED_DELIVER_DELAY=1.4
-const UNHIRED_TABLE_SPEED=140.0
+const UNHIRED_ORDER_DELAY=0.5
+const UNHIRED_DELIVER_DELAY=0.5
+const UNHIRED_TABLE_SPEED=220.0
 const UNHIRED_REFILL_SPEED=130.0
 const UNHIRED_REFILL_CAPACITY=2
 const ZONE_PRIORITY_BONUS=15.0
@@ -27,7 +27,7 @@ static func level(exp_points:int)->int:
 static func speed(role:String,exp_points:int)->float:
 	var lvl=level(exp_points)
 	if role=="refill": return 145.0+float(lvl-1)*15.0
-	return 200.0+float(lvl-1)*20.0
+	return 300.0+float(lvl-1)*20.0
 
 static func capacity(role:String,exp_points:int)->int:
 	var lvl=level(exp_points)

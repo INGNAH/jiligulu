@@ -1641,7 +1641,7 @@ func complete_main_delivery(g:Dictionary,food:int):
 	g.liked=g.liked or Patrons.likes(g.profile,Dishes.by_id(g.main_dish).tags);food_served[food]+=1
 
 func take_main_order(seat:int)->bool:
-	if phase!="营业" or seat<0 or seat>=guests.size(): return false
+	if phase!="营业" or seat<0 or seat>=guests.size() or player.distance_to(seats[seat])>=65: return false
 	var g=guests[seat]
 	if g==null or not g.trip.is_empty() or g.get("service","waiting")!="waiting": return false
 	record_guest_main_order(g)
@@ -1665,7 +1665,7 @@ func pickup_main_order(seat:int)->bool:
 
 func deliver_main_order(seat:int)->bool:
 	if phase!="营业" or manual_main_seat!=seat or held<0 or cooked>=0: return false
-	if seat<0 or seat>=guests.size(): return false
+	if seat<0 or seat>=guests.size() or player.distance_to(seats[seat])>=65: return false
 	var g=guests[seat]
 	if g==null or g.ticket!=manual_main_ticket or not g.trip.is_empty(): return false
 	var food=held
@@ -1687,6 +1687,7 @@ func pickup_side_tray(food:int)->bool:
 
 func refill_station_manual(station:int)->bool:
 	if phase!="营业" or not manual_side_carry or held<0: return false
+	if station<0 or station>=layout.stations.size() or player.distance_to(layout.center(layout.station_cell(station)))>=65: return false
 	if not add_plate(station,held): return false
 	var food=held
 	held=-1

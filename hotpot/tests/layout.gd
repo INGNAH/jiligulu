@@ -58,10 +58,12 @@ func run():
 	game.employee=true
 	var initial_staff=game.staff_pos
 	var walked=false
-	for i in range(200):
+	var first=game.guests[0]
+	for i in range(350):
 		game.tick_business(0.1)
 		walked=walked or game.staff_pos!=initial_staff
-	check(game.service_team.size()==2 and game.guests[0].get("service","waiting") in ["ordered","preparing","served"],"tableside order taken by dedicated staff")
+		if first.has("main_dish") and walked and game.zone_stats[1].arrivals>0: break
+	check(game.service_team.size()==2 and first.has("main_dish") and game.order_trips>0,"attendant records first diner's actual main order within 35 seconds")
 	check(walked,"employee physically walks between kitchen and station")
 	check(game.zone_stats[0].arrivals>0 and game.zone_stats[1].arrivals>0,"arrivals are distributed across independent zones")
 	# Full plates cannot silently disappear when a station is full.
