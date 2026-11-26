@@ -17,7 +17,7 @@ func array_counts(value, count: int) -> bool:
 
 func validate(data) -> String:
 	if not data is Dictionary: return "存档格式无效"
-	if not integer(data.get("version",0),1,4): return "存档版本不支持"
+	if not integer(data.get("version",0),1,5): return "存档版本不支持"
 	if not integer(data.get("day",0),1,1000000) or not integer(data.get("money",null),-1000000000,1000000000): return "日期或资金数据无效"
 	for pair in [["raw",6],["ready",7],["food_served",7]]:
 		if data.has(pair[0]) and not array_counts(data[pair[0]],pair[1]): return "食材库存或统计无效"
@@ -68,7 +68,7 @@ func validate(data) -> String:
 			if not value is bool: return "普通菜单无效"
 	if data.has("formulas"):
 		var book=data.formulas
-		if not book is Array or book.size()!=3: return "菜谱记录无效"
+		if not book is Array or book.size() not in [3,6]: return "菜谱记录无效"
 		var recipes=preload("res://systems/recipes.gd")
 		for j in range(book.size()):
 			if book[j]==null: continue
@@ -78,9 +78,29 @@ func validate(data) -> String:
 				if not integer(item,0,5) or int(item) in seen or recipes.TAGS[int(item)] in recipes.FORBIDDEN[j]: return "配方加料无效"
 				seen.append(int(item))
 	var offerings=data.get("offerings",[true,true,true])
-	if not offerings is Array or offerings.size()!=3: return "菜单数据无效"
+	if not offerings is Array or offerings.size() not in [3,6]: return "菜单数据无效"
 	for on_menu in offerings:
 		if not on_menu is bool: return "菜单数据无效"
+	var dishes=preload("res://systems/dishes.gd")
+	var unlocked=data.get("dishes_unlocked",[])
+	if not unlocked is Array: return "解锁列表无效"
+	var seen_ids=[]
+	for id in unlocked:
+		if not integer(id,0,dishes.DISHES.size()-1) or int(id) in seen_ids: return "菜品编号无效"
+		seen_ids.append(int(id))
+		if dishes.is_special(int(id)):
+			var book=data.get("formulas",[])
+			if id>=book.size() or book[int(id)]==null: return "解锁菜谱缺少配方"
+	if data.has("menu"):
+		if not data.menu is Dictionary: return "菜单格式无效"
+		for group in dishes.CAPS:
+			var ids=data.menu.get(group)
+			if not ids is Array or ids.size()>dishes.CAPS[group]: return "菜单容量无效"
+			var seen=[]
+			for id in ids:
+				if not integer(id,0,dishes.DISHES.size()-1) or int(id) in seen: return "菜单编号无效"
+				if int(id) not in seen_ids or dishes.by_id(int(id)).kind+"s"!=group: return "菜品分类或解锁状态无效"
+				seen.append(int(id))
 	var plans=data.get("layout_plans",[null,null,null])
 	if not plans is Array or plans.size()!=3: return "布局方案无效"
 	for plan in plans:

@@ -2,12 +2,13 @@ extends RefCounted
 
 # Each ingredient ID corresponds to one unit of raw stock in research,
 # and one plated portion in service. A saved formula lists its extra ingredients.
-const NAMES=["香煎霜牛","清渍酸甜萝卜","椒香跳跳虾"]
-const TOOLS=["煎锅","调味碗","炒锅"]
-const CORES=[[1],[5],[2,3]]
+const Dishes=preload("res://systems/dishes.gd")
+static var NAMES=Dishes.special_column("name")
+const TOOLS=["煎锅","调味碗","炒锅","砂锅","炖锅","汤锅"]
+static var CORES=Dishes.special_column("core")
 const TAGS=["鲜香","肉类","海鲜","辣味","清淡","甜酸"]
-const FLAVORS=[["肉类","鲜香"],["清淡","甜酸"],["海鲜","辣味"]]
-const FORBIDDEN=[[],["辣味"],[]]
+static var FLAVORS=Dishes.special_column("tags")
+static var FORBIDDEN=Dishes.special_column("forbidden")
 
 static func match_inputs(inputs:Array)->Dictionary:
 	var best=-1

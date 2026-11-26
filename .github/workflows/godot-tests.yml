@@ -16,7 +16,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for suite in art layout session preparation shared_dining smoke ledger custom_orders recipe_research restaurant_night table_service tray_portions regression; do
+          for suite in art layout session preparation shared_dining smoke ledger custom_orders recipe_research restaurant_night table_service tray_portions regression dishes patrons; do
             echo "Running $suite"
             XDG_DATA_HOME="$(mktemp -d)" timeout 90 godot --headless --path hotpot --script "res://tests/$suite.gd"
           done
