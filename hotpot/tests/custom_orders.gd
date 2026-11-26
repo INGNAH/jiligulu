@@ -65,7 +65,9 @@ func run():
 	ok=press_button(game,"接单") and ok
 	click.position=(game.utensil_rect(0).get_center()-game.view_focus)*game.view_zoom+game.VIEW_CENTER
 	game._unhandled_input(click)
-	ok=press_button(game,"加料 火椒") and press_button(game,"加料开火") and game.kitchen_time>0 and game.ready_food[base]==stock-1 and ok
+	ok=press_button(game,"加料 火椒") and press_button(game,"加料开火") and ok
+	game.cook_cursor.value=55
+	ok=press_button(game,"现在出锅") and game.kitchen_time>0 and game.ready_food[base]==stock-1 and ok
 	game.refresh()
 	ok=game.service_titles[1].text=="后厨制作中" and ok
 	for tick in range(51): game.tick_business(0.05)

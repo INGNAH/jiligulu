@@ -30,7 +30,7 @@ func run():
 	check(game.held==-1 and game.ready_food[0]==12,"manager opens custom orders without taking ordinary stock")
 	game.panel.hide()
 	check(game.guests[0].order==-1,"no special request on arrival")
-	game.guests[0].order=0;game.cook_order(0,game.guests[0].ticket);game.tick_business(2.5);game.guests[0].trip.clear()
+	game.guests[0].order=0;game.cook_order(0,game.guests[0].ticket);game.cook_cursor.value=55;game.finish_service_heat(game.heat_generation);game.tick_business(2.5);game.guests[0].trip.clear()
 	var cash=game.money
 	check(game.serve_guest(0) and game.money==cash+8 and game.held==-1,"preference delivery awards exact tip and consumes plate")
 	game.held=0
@@ -42,7 +42,7 @@ func run():
 		if game.guests[i]!=null and game.guests[i].special: hero_index=i
 	game.held=3
 	check(not game.serve_guest(hero_index) and game.held==3,"hero rejects spicy food without consuming it")
-	game.held=-1;game.guests[hero_index].order=0;game.cook_order(hero_index,game.guests[hero_index].ticket);game.tick_business(2.5);game.guests[hero_index].trip.clear();cash=game.money
+	game.held=-1;game.guests[hero_index].order=0;game.cook_order(hero_index,game.guests[hero_index].ticket);game.cook_cursor.value=55;game.finish_service_heat(game.heat_generation);game.tick_business(2.5);game.guests[hero_index].trip.clear();cash=game.money
 	check(game.serve_guest(hero_index) and game.money==cash+20 and game.affection==1,"hero accepts mild meat and grants affection and bonus")
 	for i in range(1600):
 		if game.phase != "营业": break

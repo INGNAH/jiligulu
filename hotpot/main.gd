@@ -165,6 +165,10 @@ var toast_text = "欢迎来到星灯火锅店。先逛市场，再去料理台�
 var toast_time = 8.0
 var cooking = false
 var cook_time = 0.0
+var service_heat_slot=-1
+var heat_generation=0
+var order_ticket=-1
+var special_heat_hit=true
 var cook_cursor: ProgressBar
 var summary = ""
 var furniture_mode = false
@@ -765,6 +769,11 @@ func _process(dt):
 
 func _unhandled_key_input(e):
 	if not e is InputEventKey or not e.pressed or e.echo: return
+	if service_heat_slot>=0:
+		if e.keycode==KEY_ESCAPE:
+			cancel_service_heat()
+			panel.hide()
+		return
 	if e.keycode==KEY_I:
 		show_bag();return
 	if e.keycode==KEY_B: toggle_build();return
@@ -879,6 +888,7 @@ func interact():
 		notify("点击有气泡的客人可以接单，也可以在后厨选单。")
 
 func clear_panel(title: String):
+	if service_heat_slot>=0: cancel_service_heat()
 	cooking = false
 	for c in panel_box.get_children():
 		panel_box.remove_child(c)
@@ -1292,12 +1302,13 @@ func show_diner(i:int):
 	if g.order>=0:
 		line("加单："+SPECIALS[g.order]+("（已送达）" if g.bonus else ""))
 		line("这次想吃："+g.get("craving","随意"))
-		if not g.bonus and order_seat<0:
+		if not g.bonus and service_hands_free():
 			button("接单 · "+ingredient_names(formula(g.order)),accept_order.bind(i,g.ticket))
 		elif order_seat==i: line("店长已接单")
 	close_button()
 
 func accept_order(i:int,ticket:int)->bool:
+	if i<0 or i>=guests.size() or not service_hands_free(): return false
 	var g=guests[i]
 	if phase!="营业" or g==null or g.ticket!=ticket or g.order<0 or g.bonus or order_seat>=0: return false
 	if formulas[g.order]==null: return false
@@ -1306,12 +1317,18 @@ func accept_order(i:int,ticket:int)->bool:
 	reserved=formula(g.order)
 	for food in reserved: ready_food[food]-=1
 	order_seat=i
+	order_ticket=ticket
 	g.accepted_at=g.wait
 	panel.hide()
 	notify("已接"+seat_label(i)+"的"+SPECIALS[g.order]+"，到后厨制作。")
 	return true
 
 func release_order():
+	order_ticket=-1
+	if service_heat_slot>=0:
+		service_heat_slot=-1
+		cooking=false
+		panel.hide()
 	if manual_main_seat>=0 and manual_main_seat<guests.size():
 		var mg=guests[manual_main_seat]
 		if mg!=null and mg.ticket==manual_main_ticket and mg.get("service","")=="preparing":
@@ -1354,6 +1371,11 @@ func kitchen_orders(tool:int=-1):
 	elif held>=0 and (manual_main_seat>=0 or manual_side_carry):
 		button("放回手持餐盘",func(): release_order(); kitchen_orders())
 	elif tool<0 and cooked<0 and held<0:
+		line("营业补做：1份原料，火候命中出2盘，失手出1盘。出锅后由送餐员取用。")
+		for id in menu.mains:
+			var dish=Dishes.by_id(id)
+			if raw[dish.core[0]]>0:
+				button("现场补做 · "+dish.name,start_main_heat.bind(id))
 		for i in range(guests.size()):
 			var g=guests[i]
 			if g!=null and g.get("service","")=="ordered" and g.get("main_order",-1)>=0 and ready_food[int(g.main_order)]>0:
@@ -1366,7 +1388,7 @@ func kitchen_orders(tool:int=-1):
 func show_dish(i:int,ticket:int):
 	if not at_kitchen() or cooked>=0: return
 	if order_seat<0 and not accept_order(i,ticket): return
-	if order_seat!=i or guests[i].ticket!=ticket: return
+	if order_seat!=i or order_ticket!=ticket or guests[i]==null or guests[i].ticket!=ticket: return
 	var g=guests[i]
 	var j=int(g.order)
 	var tags=Recipes.tags(j,formulas[j]+toppings)
@@ -1382,23 +1404,76 @@ func show_dish(i:int,ticket:int):
 		button("%s %s · %s（余%d）"%["移除" if food in toppings else "加料",ING[food],TASTE[food],ready_food[food]],func(): change_input(toppings,food);show_dish(i,ticket))
 	close_button()
 
+func service_hands_free()->bool:
+	return held<0 and cooked<0 and order_seat<0 and manual_main_seat<0 and not manual_side_carry and service_heat_slot<0
+
+func start_main_heat(id:int):
+	if phase!="营业" or not at_kitchen() or not service_hands_free() or id not in menu.mains: return
+	var dish=Dishes.by_id(id)
+	if raw[dish.core[0]]>0: open_service_heat(dish.core[0],dish.name)
+
 func cook_order(i:int,ticket:int):
-	if not at_kitchen() or cooked>=0 or held>=0: return
+	if phase!="营业" or not at_kitchen() or cooked>=0 or held>=0 or service_heat_slot>=0: return
+	if i<0 or i>=guests.size(): return
 	var g=guests[i]
 	if g==null or g.ticket!=ticket or g.order<0 or g.bonus: return
 	if order_seat<0 and not accept_order(i,ticket): return
-	if order_seat!=i: return
-	for food in toppings:
-		if ready_food[food]<=0: notify(ING[food]+"已用完。");return
-	for food in toppings:
-		ready_food[food]-=1
-		reserved.append(food)
-	cooked_tags=Recipes.tags(g.order,formulas[g.order]+toppings)
-	toppings.clear()
-	cooked=g.order
-	kitchen_time=2.5
+	if order_seat!=i or order_ticket!=ticket: return
+	open_service_heat(STEW_SLOT,SPECIALS[g.order])
+
+func open_service_heat(slot:int,title:String):
+	clear_panel(title+" · 营业火候")
+	service_heat_slot=slot
+	heat_generation+=1
+	var window=cook_window(slot)
+	line("火候 %d—%d 时出锅。"%[window.x,window.y])
+	line("定制菜失手仍可送达，小费少2金。取消会退回本单留料。" if slot==STEW_SLOT else "命中2盘，失手1盘；出锅时消耗1份原料。")
+	cook_cursor=ProgressBar.new()
+	cook_cursor.custom_minimum_size=Vector2(380,40)
+	panel_box.add_child(cook_cursor)
+	cook_time=0
+	cook_cursor.value=0
+	cooking=true
+	button("现在出锅！",finish_service_heat.bind(heat_generation))
+	button("取消本锅",cancel_service_heat)
+
+func cancel_service_heat():
+	if service_heat_slot<0: return
+	var special=service_heat_slot==STEW_SLOT
+	service_heat_slot=-1
+	cooking=false
+	if special: release_order()
 	panel.hide()
-	notify("正在制作"+SPECIALS[cooked]+"…")
+
+func finish_service_heat(generation:int):
+	var slot=service_heat_slot
+	if slot<0 or generation!=heat_generation or phase!="营业" or not at_kitchen(): return
+	var hit=heat_quality(slot,cook_cursor.value)==1
+	if slot==STEW_SLOT:
+		if order_seat<0 or guests[order_seat]==null or guests[order_seat].ticket!=order_ticket:
+			cancel_service_heat()
+			return
+		for food in toppings:
+			if ready_food[food]<=0:
+				cancel_service_heat()
+				notify("加料库存不足，本单留料已退回。")
+				return
+		for food in toppings:
+			ready_food[food]-=1
+			reserved.append(food)
+		cooked=guests[order_seat].order
+		cooked_tags=Recipes.tags(cooked,formulas[cooked]+toppings)
+		toppings.clear()
+		special_heat_hit=hit
+		kitchen_time=2.5
+		notify("正在装盘："+SPECIALS[cooked])
+	elif raw[slot]>0:
+		raw[slot]-=1
+		ready_food[slot]+=2 if hit else 1
+		notify("%s补做完成，入库%d盘。"%[ING[slot],2 if hit else 1])
+	service_heat_slot=-1
+	cooking=false
+	panel.hide()
 
 func spawn_guest():
 	if spawned>=guest_target: return
@@ -1649,7 +1724,7 @@ func take_main_order(seat:int)->bool:
 	return true
 
 func pickup_main_order(seat:int)->bool:
-	if phase!="营业" or not at_kitchen() or held>=0 or cooked>=0 or order_seat>=0 or manual_main_seat>=0: return false
+	if phase!="营业" or not at_kitchen() or not service_hands_free(): return false
 	if seat<0 or seat>=guests.size(): return false
 	var g=guests[seat]
 	if g==null or g.get("service","")!="ordered" or int(g.get("main_order",-1))<0: return false
@@ -1677,7 +1752,7 @@ func deliver_main_order(seat:int)->bool:
 	return true
 
 func pickup_side_tray(food:int)->bool:
-	if phase!="营业" or not at_kitchen() or held>=0 or cooked>=0 or order_seat>=0 or manual_main_seat>=0: return false
+	if phase!="营业" or not at_kitchen() or not service_hands_free(): return false
 	if food not in SIDE_FOODS or ready_food[food]<=0: return false
 	ready_food[food]-=1
 	held=food
@@ -1853,13 +1928,14 @@ func tick_staff(dt: float):
 func serve_guest(i: int) -> bool:
 	var g = guests[i]
 	if g == null or held < 0 or kitchen_time>0: return false
-	var match_food = i==order_seat and cooked>=0 and cooked==g.order and g.trip.is_empty()
+	var match_food = i==order_seat and g.ticket==order_ticket and cooked>=0 and cooked==g.order and g.trip.is_empty()
 	if g.bonus or not match_food:
 		notify("已满足点单。" if g.bonus else "不是想要的菜，食物仍留在手里。")
 		return false
 	var liked=Patrons.likes(g.profile,cooked_tags)
 	var craved=g.get("craving","") in cooked_tags
 	order_seat=-1
+	order_ticket=-1
 	g.bonus = true
 	g.full+=int(Dishes.by_id(cooked).fill);g.liked=g.liked or liked;cooked=-1
 	for ingredient in reserved: food_served[ingredient]+=1
@@ -1869,6 +1945,7 @@ func serve_guest(i: int) -> bool:
 	g.last_meal = 0
 	g.score = 90+(5 if liked else 0)+(5 if craved else 0)
 	var reward = (18 if g.special else 6)+(2 if liked else 0)+(3 if craved else 0)
+	if not special_heat_hit: reward-=2
 	money += reward
 	income += reward
 	tips += reward
@@ -1934,6 +2011,7 @@ func end_day():
 		for item in w.get("extra",[]): ready_food[item.food]+=1
 	service_team.clear()
 	if phase!="营业": return
+	release_order()
 	for i in range(seats.size()):
 		if guests[i] != null: checkout(i)
 	var wages=Staff.daily_wages(staff)
@@ -2125,6 +2203,7 @@ func apply_save(data: Dictionary):
 	menu_price=clampi(roundi(float(data.get("menu_price",24))/3.0)*3,18,30)
 	food_served=data.get("food_served",[0,0,0,0,0,0,0]).duplicate();special_done=data.get("special_done",false)
 	guest_target=expected_guests()
+	service_heat_slot=-1;order_ticket=-1;cooking=false
 	order_seat=-1;manual_main_seat=-1;manual_main_ticket=-1;manual_side_carry=false;kitchen_time=0;plates.clear();staff_carry.clear();staff_path.clear();held=-1;build_mode=false;moving_table=-1;layout_history.clear()
 	if phase=="结算": show_summary()
 
