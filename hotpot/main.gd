@@ -12,15 +12,39 @@ var save_error=""
 const FILL=[26,42,25,14,46,18,52]
 const TASTE=["鲜香","肉类","海鲜","辣味","清淡","甜酸"]
 const Recipes=preload("res://systems/recipes.gd")
-const SPECIALS=Recipes.NAMES
-const BASE=[1,5,2]
+const Dishes=preload("res://systems/dishes.gd")
+const Patrons=preload("res://systems/patrons.gd")
+var patron_rng=RandomNumberGenerator.new()
+var SPECIALS=Dishes.special_column("name")
+var BASE=Dishes.special_column("core").map(func(core):return core[0])
+var menu={"mains":[7,8,6,9],"sides":[12,13,14],"specials":[0]}
+var dishes_unlocked=Dishes.mains()+Dishes.sides()+[0]
 const FACILITY=["蘸料","饮料","冰淇淋","等候长椅","星灯盆栽"]
 var facility_kind=0
-var regular_menu=[true,true,true,true,true,true,true]
+# Legacy callers use stock-slot flags. Slot 6 is the prepared beef alternative.
+var regular_menu:Array:
+	get:
+		var flags=[false,false,false,false,false,false,false]
+		for id in menu.mains+menu.sides: flags[Dishes.by_id(id).core[0]]=true
+		flags[6]=7 in menu.mains
+		return flags
+	set(flags):
+		menu.mains=[]
+		menu.sides=[]
+		for id in [7,8]+Dishes.sides():
+			var dish=Dishes.by_id(id)
+			var group=dish.kind+"s"
+			if flags[dish.core[0]] or (id==7 and flags[6]):
+				if menu[group].size()<Dishes.CAPS[group]: menu[group].append(id)
 var reviews=[]
 var table_results={}
-var formulas=[[],null,null]
-var offerings=[true,false,false]
+var formulas=[[],null,null,null,null,null]
+var offerings:Array:
+	get: return Dishes.specials().map(func(id):return id in menu.specials)
+	set(flags):
+		menu.specials=[]
+		for id in range(mini(flags.size(),Dishes.specials().size())):
+			if flags[id] and id in dishes_unlocked and menu.specials.size()<Dishes.CAPS.specials: menu.specials.append(id)
 var research_inputs=[]
 var toppings=[]
 var reserved=[]
@@ -70,7 +94,8 @@ var staff_pos = Vector2(360,650)
 var staff_path: Array = []
 var staff_carry: Array = []
 var staff_station = -1
-const SIDE_FOODS=[0,3,4,5]
+var SIDE_FOODS:Array:
+	get: return menu.sides.map(func(id):return Dishes.by_id(id).core[0])
 var staff_state = "备餐区"
 var staff_zone = -1
 var staff_animation = 0.0
@@ -377,7 +402,11 @@ func refresh_service_bar():
 			service_card(z,layout.zone_name(z)+"区 · 出餐窗",supply+"  /  待送 %d 单"%outstanding[z])
 		return
 	if at_kitchen() and cooked<0:
-		for j in range(SPECIALS.size()):
+		for slot in 3:
+			if slot>=menu.specials.size():
+				service_card(slot,"空菜位","今晚未上菜单")
+				continue
+			var j=menu.specials[slot]
 			var food=int(BASE[j])
 			var detail="%s · 余 %d 盘"%[ING[food],ready_food[food]]
 			if order_seat>=0 and guests[order_seat].order==j: detail="原方食材 · 已留齐"
@@ -385,7 +414,7 @@ func refresh_service_bar():
 			elif formulas[j]!=null:
 				for ingredient in formula(j):
 					if ready_food[ingredient]==0: detail=ING[ingredient]+" · 缺 1 盘";break
-			service_card(j,SPECIALS[j],detail,food)
+			service_card(slot,SPECIALS[j],detail,food)
 		return
 	if order_seat<0:
 		var count=0
@@ -964,6 +993,7 @@ func research():
 	else:
 		var j=int(result.recipe)
 		formulas[j]=result.extras
+		if j not in dishes_unlocked: dishes_unlocked.append(j)
 		line(SPECIALS[j]+" · "+"、".join(Recipes.tags(j,result.extras)))
 		line("已记入菜谱。每份需 "+ingredient_names(formula(j)))
 	save_game()
@@ -1038,18 +1068,20 @@ func book_event():
 
 func configure_menu():
 	clear_panel("今晚菜单")
-	for food in range(7):
-		var kind="主菜" if food in [1,2,6] else "自取"
-		button("%s · %s · %s（饱腹 %d）"%["供应" if regular_menu[food] else "下架",kind,dish_name(food),FILL[food]],func(): regular_menu[food]=not regular_menu[food];configure_menu())
-	line("店长定制菜")
-	for j in range(SPECIALS.size()):
-		if formulas[j]==null:
-			line(SPECIALS[j]+" · 待研发")
-			continue
-		line("原方："+ingredient_names(formula(j))+" · "+"、".join(Recipes.tags(j,formulas[j])))
-		button(("%s · "%("供应" if offerings[j] else "下架"))+SPECIALS[j],func(): offerings[j]=not offerings[j];configure_menu())
-	line("现做一份消耗一盘对应备菜。客人进餐后才会加单。")
+	for group in Dishes.CAPS:
+		var title={"mains":"主菜","sides":"自取","specials":"特别菜"}[group]
+		line("%s　%d / %d"%[title,menu[group].size(),Dishes.CAPS[group]])
+		for dish in Dishes.DISHES:
+			if dish.kind+"s"!=group: continue
+			if dish.id not in dishes_unlocked:
+				line(dish.name+" · 待研发")
+			else:
+				button(("供应 · " if dish.id in menu[group] else "下架 · ")+dish.name,change_menu.bind(dish.id))
 	close_button()
+
+func change_menu(id:int):
+	if not Dishes.toggle(menu,dishes_unlocked,id): notify("本类菜单已满，请先下架一道菜。")
+	configure_menu()
 
 func show_open():
 	clear_panel("星灯营业铃")
@@ -1125,6 +1157,7 @@ func start_business() -> bool:
 		notify("普通菜单上架菜品至少备齐 12 盘再营业，建议按预计客人数准备每人3盘。")
 		return false
 	if not save_game(): return false
+	patron_rng.seed=day+2
 	guest_target=expected_guests()
 	staff_trips=0
 	phase = "营业"
@@ -1147,8 +1180,12 @@ func order_bubble(i:int)->Rect2:
 func show_diner(i:int):
 	var g=guests[i]
 	clear_panel(("%s · "%seat_label(i))+("莱恩" if g.special else "客人 %d"%(g.ticket+1)))
+	line("忌口："+"、".join(g.profile.dislikes))
 	line("喜好："+TASTE[g.wish]+" · "+ING[g.wish])
-	if g.ticket%4 in [0,2]: line("期待：赶路前快点吃饱" if g.ticket%4==0 else "期待：尝到招牌霜牛")
+	if g.special: line("期待：尝到招牌霜牛")
+	elif g.ticket%4==0: line("期待：赶路前快点吃饱")
+	if g.has("main_dish"): line("常规点单："+Dishes.by_id(g.main_dish).name)
+	if g.liked: line("吃到了喜欢的"+g.profile.preference+"口味")
 	line("首菜等候 %.0f 秒"%g.get("served_at",g.wait))
 	line("饱腹 %d / %d"%[g.full,g.capacity])
 	if g.order>=0:
@@ -1185,7 +1222,7 @@ func release_order():
 	order_seat=-1
 
 func utensil_rect(j:int)->Rect2:
-	var pos=layout.fixture_center(layout.kitchens[0])+Vector2(-63+j*43,-61)
+	var pos=layout.fixture_center(layout.kitchens[0])+Vector2(-63+(j%3)*43,-61-int(j/3)*20)
 	return Rect2(pos,Vector2(42,19))
 
 func kitchen_orders(tool:int=-1):
@@ -1271,8 +1308,9 @@ func seat_next():
 	var route=layout.guest_path(layout.cell(seats[chosen]),layout.cell(entry.position) if entry.position.y<=layout.center(layout.DOOR).y else layout.DOOR)
 	route.reverse()
 	var ticket=int(entry.ticket)
-	var wish=1 if ticket%4==2 else ticket%6
-	guests[chosen]={"ticket":ticket,"position":entry.position,"trip":route.map(layout.center),"visited":[],"full":0,"capacity":68+(ticket%4)*12,"order":-1,"order_at":0.0,"liked":false,"wish":wish,"special":ticket==2,"eaten":0,"wait":0.0,"bonus":false,"score":80-maxi(0,menu_price-24),"last_meal":0.0,"hungry":0.0}
+	var profile=Patrons.profile(ticket,patron_rng)
+	var wish=profile.wish
+	guests[chosen]={"profile":profile,"ticket":ticket,"position":entry.position,"trip":route.map(layout.center),"visited":[],"full":0,"capacity":68+(ticket%4)*12,"order":-1,"order_at":0.0,"liked":false,"wish":wish,"special":ticket==2,"eaten":0,"wait":0.0,"bonus":false,"score":80-maxi(0,menu_price-24),"last_meal":0.0,"hungry":0.0}
 
 func station_plate_count(station:int)->int:
 	var count=0
@@ -1329,13 +1367,11 @@ func tick_business(dt: float):
 		g.wait+=dt
 		if not g.trip.is_empty() and not g.get("waiting_refill",false) and g.get("facility_pause",0.0)<=0: g.walk_seconds=g.get("walk_seconds",0.0)+dt
 		if g.order<0 and (g.eaten>0 or (g.has("served_at") and g.wait-g.served_at>=3)) and (g.special or g.ticket%4!=3):
-			for offset in range(3):
-				var recipe=(BASE.find(g.wish)+3+offset)%3 if g.wish in BASE else (g.ticket+offset)%3
-				if offerings[recipe] and formulas[recipe]!=null:
-					g.craving=TASTE[(g.ticket+day+2)%TASTE.size()]
-					g.order=recipe
-					g.order_at=g.wait
-					break
+			var recipe=preferred_special(g)
+			if recipe>=0:
+				g.craving=g.profile.preference
+				g.order=recipe
+				g.order_at=g.wait
 		if not g.trip.is_empty():
 			if g.get("facility_pause",0.0)>0:
 				g.facility_pause-=dt
@@ -1453,11 +1489,16 @@ func finish_side(g:Dictionary):
 	var taken=int(g.side_portions)
 	g.full+=maxi(1,roundi(FILL[food]*taken/6.0))
 	g.sides_eaten=g.get("sides_eaten",0)+1
-	g.liked=g.liked or food==g.wish
+	g.liked=g.liked or Patrons.likes(g.profile,[TASTE[food]])
 	g.eaten+=1
 	g.last_meal=0
 	g.erase("side_portions")
 	g.erase("eating_time")
+
+func preferred_special(g:Dictionary)->int:
+	var available=menu.specials.filter(func(id):return formulas[id]!=null and formula(id).all(func(food):return ready_food[food]>0))
+	if g.profile.special_want in available: return g.profile.special_want
+	return Patrons.choose(g.profile,available,patron_rng)
 
 func tick_table_service(w:Dictionary,dt:float):
 	if not w.path.is_empty():
@@ -1472,10 +1513,16 @@ func tick_table_service(w:Dictionary,dt:float):
 			if w.food>=0: ready_food[w.food]+=1
 		elif w.stage=="order":
 			g.main_order=-1
-			var mains=[1,2,6]
-			var first=(g.ticket+g.get("mains_eaten",0))%mains.size()
-			for candidate in [g.wish,mains[first],mains[(first+1)%3],mains[(first+2)%3]]:
-				if candidate in [1,2,6] and regular_menu[candidate] and ready_food[candidate]>0: g.main_order=candidate;break
+			var available=menu.mains.filter(func(id):return ready_food[Dishes.by_id(id).core[0]]>0 or (id==7 and ready_food[6]>0))
+			var id=Patrons.choose(g.profile,available,patron_rng)
+			if id>=0:
+				g.main_dish=id
+				g.main_order=Dishes.by_id(id).core[0]
+				if id==7 and ready_food[1]==0: g.main_order=6
+			if g.order<0 and g.profile.special_want in menu.specials and preferred_special(g)==g.profile.special_want:
+				g.order=g.profile.special_want
+				g.order_at=g.wait
+				g.craving=g.profile.preference
 			g.service="ordered" if g.main_order>=0 else "out"
 		elif w.stage=="kitchen":
 			var food=int(g.main_order)
@@ -1491,7 +1538,7 @@ func tick_table_service(w:Dictionary,dt:float):
 			g.mains_eaten=g.get("mains_eaten",0)+1
 			g.last_meal=0
 			g.service="served";g.pot_food=w.food;g.full+=FILL[w.food]
-			g.liked=g.liked or g.wish==w.food;food_served[w.food]+=1
+			g.liked=g.liked or Patrons.likes(g.profile,Dishes.by_id(g.main_dish).tags);food_served[w.food]+=1
 		w.stage="idle";w.food=-1
 	var taking=w.role=="点单"
 	var seat=-1
@@ -1582,7 +1629,7 @@ func serve_guest(i: int) -> bool:
 	if g.bonus or not match_food:
 		notify("已满足点单。" if g.bonus else "不是想要的菜，食物仍留在手里。")
 		return false
-	var liked=TASTE[g.wish] in cooked_tags
+	var liked=Patrons.likes(g.profile,cooked_tags)
 	var craved=g.get("craving","") in cooked_tags
 	order_seat=-1
 	g.bonus = true
@@ -1623,15 +1670,16 @@ func checkout(i: int):
 		if visitor%4==0:
 			score+=6 if g.full>=g.capacity and g.wait<55 else -4
 			remark="赶路想吃饱，%s，坐了%d秒。"%["吃饱了" if g.full>=g.capacity else "还差几口",int(g.wait)]
-		elif visitor%4==2:
+		elif g.get("special",false) and g.profile.preference=="肉类":
 			var beef=g.get("main_food",-1) in [1,6] or (g.bonus and g.order==0)
 			score+=8 if beef else -12
 			remark="冲霜牛来的，"+("吃到了牛肉。" if beef else "没尝到牛肉。主菜："+actual+"。")
+		if g.has("profile"): remark+=" "+("吃到了喜欢的" if g.liked else "没尝到想吃的")+g.profile.preference+"口味。"
 		if g.get("shortage",false): remark+=" 想点的主菜售罄了。"
 		if g.get("refill_wait",0.0)>8.0:
 			score-=mini(18,ceili((g.refill_wait-8.0)/2.0))
 			remark+=" 自取台缺菜，累计等了%d秒。"%roundi(g.refill_wait)
-		if reviews.size()<3 or (visitor%4==2 and not reviews.any(func(review):return review.contains("冲霜牛来的"))): reviews.append(seat_label(i)+" · "+remark)
+		if reviews.size()<3 or (g.get("special",false) and not reviews.any(func(review):return review.contains("冲霜牛来的"))): reviews.append(seat_label(i)+" · "+remark)
 	score=clampi(score,0,100)
 	satisfaction+=score
 	var z=layout.tables[seat_tables[i]].zone
@@ -1772,7 +1820,7 @@ func next_day():
 	save_game()
 
 func snapshot() -> Dictionary:
-	return {"reputation":reputation,"bulletin":bulletin,"event_booked":event_booked,"formulas":formulas.duplicate(true),"regular_menu":regular_menu.duplicate(),"offerings":offerings.duplicate(),"version":4,"layout_plans":layout_plans.duplicate(true),"history":business_history.duplicate(true),"layout":layout.snapshot(),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
+	return {"reputation":reputation,"bulletin":bulletin,"event_booked":event_booked,"formulas":formulas.duplicate(true),"regular_menu":regular_menu.duplicate(),"offerings":offerings.duplicate(),"version":5,"menu":menu.duplicate(true),"dishes_unlocked":dishes_unlocked.duplicate(),"layout_plans":layout_plans.duplicate(true),"history":business_history.duplicate(true),"layout":layout.snapshot(),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
 
 func save_game() -> bool:
 	if phase=="营业":
@@ -1795,9 +1843,14 @@ func apply_save(data: Dictionary):
 	formulas=data.get("formulas",[[],[],[]]).duplicate(true)
 	for j in range(formulas.size()):
 		if formulas[j]!=null: formulas[j]=formulas[j].map(func(food): return int(food))
+	formulas.resize(Dishes.specials().size())
+	dishes_unlocked=Dishes.mains()+Dishes.sides()+Dishes.specials().filter(func(id):return formulas[id]!=null)
 	research_inputs.clear();toppings.clear();reserved.clear();cooked_tags.clear()
 	regular_menu=data.get("regular_menu",[true,true,true,true,true,true,true]).duplicate()
 	reputation=int(data.get("reputation",70));bulletin=data.get("bulletin","今天是新的营业日。");event_booked=data.get("event_booked",false);offerings=data.get("offerings",[true,true,true]).duplicate();cooked=-1
+	if data.has("menu"):
+		for group in Dishes.CAPS: menu[group]=data.menu[group].map(func(id):return int(id))
+	if data.has("dishes_unlocked"): dishes_unlocked=data.dishes_unlocked.map(func(id):return int(id))
 	layout_plans=data.get("layout_plans",[null,null,null]).duplicate(true)
 	for slot in range(layout_plans.size()):
 		if layout_plans[slot]!=null: layout_plans[slot]=layout.upgrade_snapshot(layout_plans[slot])
@@ -1811,7 +1864,8 @@ func apply_save(data: Dictionary):
 	staff_zone=clampi(int(data.get("staff_zone",-1)),-1,2)
 	sync_seats()
 	money=int(data.get("money",150));day=int(data.get("day",1))
-	raw=data.get("raw",[0,0,0,0,0,0]).duplicate();ready_food=data.get("ready",[0,0,0,0,0,0,0]).duplicate()
+	raw=data.get("raw",[0,0,0,0,0,0]).map(func(n):return int(n))
+	ready_food=data.get("ready",[0,0,0,0,0,0,0]).map(func(n):return int(n))
 	mastery=int(data.get("mastery",0));affection=int(data.get("affection",0))
 	employee=data.get("employee",false);decor=data.get("decor",false)
 	decor_pos=Vector2(data.get("decor_x",1080),data.get("decor_y",600))
