@@ -18,5 +18,13 @@ jobs:
           set -euo pipefail
           for suite in art layout session preparation shared_dining smoke ledger custom_orders recipe_research restaurant_night table_service tray_portions regression dishes patrons cooking staff; do
             echo "Running $suite"
-            XDG_DATA_HOME="$(mktemp -d)" timeout 90 godot --headless --path hotpot --script "res://tests/$suite.gd"
+            log="$(mktemp)"
+            rc=0
+            XDG_DATA_HOME="$(mktemp -d)" timeout 90 godot --headless --path hotpot --script "res://tests/$suite.gd" >"$log" 2>&1 || rc=$?
+            cat "$log"
+            if (( rc != 0 )) || grep -q '^SCRIPT ERROR:' "$log"; then
+              detail=$(grep -E '^(SCRIPT ERROR:|ERROR:| +at:)' "$log" | tail -n 12 | tr '\n' ' ' || true)
+              echo "::error title=$suite::$suite: exit $rc; $detail"
+              exit "$(( rc == 0 ? 1 : rc ))"
+            fi
           done
