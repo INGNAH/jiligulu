@@ -33,6 +33,9 @@ func validate(data) -> String:
 	if data.get("phase","准备") not in ["准备","结算"]: return "此存档没有可恢复的阶段"
 	if not data.get("summary","") is String: return "账本格式无效"
 	if not integer(data.get("staff_zone",-1),-1,2): return "员工岗位无效"
+	if data.has("staff"):
+		var staff_problem=preload("res://systems/staff.gd").validate(data.staff)
+		if not staff_problem.is_empty(): return staff_problem
 	if not integer(data.get("menu_price",24),18,30): return "餐费设置无效"
 	for key in ["decor_x","decor_y"]:
 		if data.has(key) and (not (data[key] is int or data[key] is float) or not is_finite(float(data[key])) or abs(data[key])>10000): return "装饰坐标无效"
