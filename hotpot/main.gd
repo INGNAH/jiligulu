@@ -14,6 +14,7 @@ const TASTE=["鲜香","肉类","海鲜","辣味","清淡","甜酸"]
 const Recipes=preload("res://systems/recipes.gd")
 const Dishes=preload("res://systems/dishes.gd")
 const Patrons=preload("res://systems/patrons.gd")
+const Staff=preload("res://systems/staff.gd")
 var patron_rng=RandomNumberGenerator.new()
 var SPECIALS=Dishes.special_column("name")
 var BASE=Dishes.special_column("core").map(func(core):return core[0])
@@ -62,8 +63,16 @@ var lost=0
 var missed_taste=0
 var menu_price=24
 var guest_target=10
-var staff_exp=0
+var staff:Dictionary=Staff.default_state()
+var staff_exp:int:
+	get: return int(staff.refill.exp)
+	set(value): staff.refill.exp=clampi(int(value),0,Staff.MAX_EXP)
 var staff_trips=0
+var order_trips=0
+var deliver_trips=0
+var manual_main_seat=-1
+var manual_main_ticket=-1
+var manual_side_carry=false
 var business_history=[]
 var food_served=[0,0,0,0,0,0,0]
 var last_save_ok=true
@@ -97,7 +106,9 @@ var staff_station = -1
 var SIDE_FOODS:Array:
 	get: return menu.sides.map(func(id):return Dishes.by_id(id).core[0])
 var staff_state = "备餐区"
-var staff_zone = -1
+var staff_zone: int:
+	get: return int(staff.refill.zone)
+	set(value): staff.refill.zone=clampi(int(value),-1,2)
 var staff_animation = 0.0
 var last_brush = Vector2i(-100,-100)
 var zone_stats: Array = []
@@ -122,7 +133,9 @@ const COOK_YIELD_SUCCESS=3
 const COOK_YIELD_FAIL=1
 var cook_slot=-1
 var affection = 0
-var employee = false
+var employee: bool:
+	get: return bool(staff.refill.hired)
+	set(value): staff.refill.hired=bool(value)
 var decor = false
 var decor_pos = Vector2(1080, 600)
 var phase = "准备"
@@ -852,6 +865,17 @@ func interact():
 				serve_guest(order_seat)
 			else: notify("请到"+seat_label(order_seat)+"旁，等客人回座后送餐。")
 			return
+		if manual_main_seat>=0 and held>=0:
+			if player.distance_to(seats[manual_main_seat])<65 and deliver_main_order(manual_main_seat): return
+			notify("请送到"+seat_label(manual_main_seat)+"旁。")
+			return
+		if manual_side_carry and held>=0:
+			for station in range(layout.stations.size()):
+				if player.distance_to(layout.center(layout.station_cell(station)))<65 and refill_station_manual(station): return
+			notify("请走到食材台旁补餐，或按 Q 放回备菜。")
+			return
+		for seat in range(seats.size()):
+			if guests[seat]!=null and player.distance_to(seats[seat])<65 and take_main_order(seat): return
 		notify("点击有气泡的客人可以接单，也可以在后厨选单。")
 
 func clear_panel(title: String):
@@ -927,7 +951,8 @@ func show_preparation():
 	line("清单优先使用现有库存，均衡补齐六种基础菜；以3份原料一组采购。建议数量不保证客人口味或送餐效率。")
 	for i in range(6):
 		line("%s：原料%d / 成品%d / 目标%d盘 / 需买%d份"%[ING[i],raw[i],ready_food[i],plan.targets[i],plan.purchases[i]])
-	line("预计采购%d金；持有%d金。%s"%[plan.cost,money,"露米今晚另需8金工资。" if employee else "当班补餐员每趟从厨房带两盘到食材台。"])
+	var total_wages=Staff.daily_wages(staff)
+	line("预计采购%d金；持有%d金。%s"%[plan.cost,money,"今晚员工工资共%d金。"%total_wages if total_wages>0 else "尚未雇佣专职员工，兼顾岗效率较低。"])
 	button("按清单采购 · %d金"%plan.cost,func(): buy_recommended();show_preparation())
 	button("按计划装盘 · 保留多余原料",func(): prepare_recommended();show_preparation())
 	button("查看开店检查",show_open)
@@ -1162,35 +1187,53 @@ func show_open():
 	if not layout.errors.is_empty(): line("必须修复："+str(layout.errors[0]))
 	var plan=preparation_plan()
 	line("库存检查：已备%d / 建议%d盘。%s"%[plan.total,plan.recommended,"不足12盘，不能开门。" if plan.total<12 else "可开门；仍有缺餐风险。" if plan.missing>0 else "数量充足，注意及时补餐。"])
-	if employee and money<8: line("资金提醒：当前不足8金工资，需依靠今晚收入支付。")
-	if not employee: line("主菜由送餐员送桌，自取台由当班员工补餐。招聘露米可提高每趟运量。")
+	var wages=Staff.daily_wages(staff)
+	if wages>0 and money<wages: line("资金提醒：当前不足%d金工资，需依靠今晚收入支付。"%wages)
+	if Staff.hired_count(staff)==0: line("未雇佣的岗位由后厨兼顾（响应变慢），店长也可亲自点单、送菜或补餐。")
 	button("库存预警与备菜计划",show_preparation)
 	line("肉类点单送桌，蔬菜到食材台自取，店长在后厨现做定制菜。")
 	button("敲铃 · 开始营业",func(): start_business())
-	if not employee: button("招聘露米 · 符文补餐员 30 金",func(): hire(); show_open())
-	else:
-		line("露米 Lv.%d · 经验%d/60 · 今晚工资8金。\n每趟运%d盘，步速%d；完成补餐与营业积累经验。"%[staff_level(),staff_exp,staff_capacity(),staff_speed()])
-		button("岗位：%s（点击切换）"%("自动巡区" if staff_zone<0 else layout.zone_name(staff_zone)+"区"),cycle_staff_zone)
+	for role in Staff.ROLES:
+		var state=staff[role]
+		var role_title=Staff.TITLES[role]
+		var worker_name=Staff.NAMES[role]
+		if not state.hired:
+			button("招聘%s · %s %d 金（日薪%d金）"%[worker_name,role_title,Staff.HIRE_COST,Staff.DAILY_WAGE],func(): hire(role); show_open())
+		else:
+			line("%s（%s） Lv.%d · 经验%d/%d · 日薪%d金 · 容量%d · 步速%d"%[worker_name,role_title,staff_level(role),state.exp,Staff.MAX_EXP,Staff.DAILY_WAGE,staff_capacity(role),int(staff_speed(role))])
+			var z=int(state.zone)
+			button("%s排班：%s（点击切换）"%[role_title,"自动巡区" if z<0 else layout.zone_name(z)+"区优先"],cycle_staff_zone.bind(role))
 	if not decor: button("购买星灯盆栽 15 金 · 评价 +5",func(): if money >= 15: money-=15; spending+=15; decor=true; show_open())
 	close_button()
 
 func expected_guests() -> int:
 	return maxi(3,(18-roundi(menu_price/3.0))+roundi((reputation-70)/6.0)+(5 if event_booked else 0))
 
-func staff_level() -> int: return 1+mini(2,int(staff_exp/30))
-func staff_capacity() -> int: return 3+(1 if staff_level()>=3 else 0)
-func staff_speed() -> float: return 145.0+(staff_level()-1)*15.0
+func staff_level(role: String="refill") -> int:
+	if not staff.has(role): return 1
+	return Staff.level(int(staff[role].exp))
 
-func cycle_staff_zone():
-	staff_zone+=1
-	if staff_zone>2: staff_zone=-1
+func staff_capacity(role: String="refill") -> int:
+	if not staff.has(role): return 1
+	return Staff.capacity(role,int(staff[role].exp))
+
+func staff_speed(role: String="refill") -> float:
+	if not staff.has(role): return Staff.UNHIRED_TABLE_SPEED
+	return Staff.speed(role,int(staff[role].exp))
+
+func cycle_staff_zone(role: String="refill"):
+	if not staff.has(role): return
+	var next=int(staff[role].zone)+1
+	if next>2: next=-1
+	staff[role].zone=next
 	show_open()
 
-func hire() -> bool:
-	if employee or money < 30: return false
-	money -= 30
-	spending += 30
-	employee = true
+func hire(role: String="refill") -> bool:
+	if phase!="准备" or not staff.has(role): return false
+	if staff[role].hired or money < Staff.HIRE_COST: return false
+	money -= Staff.HIRE_COST
+	spending += Staff.HIRE_COST
+	staff[role].hired = true
 	return true
 
 func start_business() -> bool:
@@ -1202,8 +1245,8 @@ func start_business() -> bool:
 	zone_stats=[]
 	for z in range(3): zone_stats.append({"visits":0,"hungry":0.0,"score":0,"meals":0,"arrivals":0,"first_wait":0.0,"side_walk":0.0})
 	service_team.clear()
-	for role in ["点单","送餐"]:
-		service_team.append({"role":role,"pos":layout.center(KITCHEN_STATION),"path":[],"stage":"idle","seat":-1,"ticket":-1,"food":-1})
+	for pair in [["order","点单"],["deliver","送餐"]]:
+		service_team.append({"key":pair[0],"role":pair[1],"pos":layout.center(KITCHEN_STATION),"path":[],"stage":"idle","seat":-1,"ticket":-1,"food":-1,"delay":0.0,"extra":[]})
 	staff_pos=layout.center(layout.kitchen_cell());staff_path.clear();staff_carry.clear();staff_station=-1;staff_state="备餐区"
 	var total = 0
 	for i in range(ready_food.size()):
@@ -1214,7 +1257,8 @@ func start_business() -> bool:
 	if not save_game(): return false
 	patron_rng.seed=day+2
 	guest_target=expected_guests()
-	staff_trips=0
+	staff_trips=0;order_trips=0;deliver_trips=0
+	manual_main_seat=-1;manual_main_ticket=-1;manual_side_carry=false
 	phase = "营业"
 	elapsed = 0
 	spawned = 0
@@ -1243,6 +1287,8 @@ func show_diner(i:int):
 	if g.liked: line("吃到了喜欢的"+g.profile.preference+"口味")
 	line("首菜等候 %.0f 秒"%g.get("served_at",g.wait))
 	line("饱腹 %d / %d"%[g.full,g.capacity])
+	if g.trip.is_empty() and g.get("service","waiting")=="waiting":
+		button("亲自记录主菜点单",func(): take_main_order(i);panel.hide())
 	if g.order>=0:
 		line("加单："+SPECIALS[g.order]+("（已送达）" if g.bonus else ""))
 		line("这次想吃："+g.get("craving","随意"))
@@ -1266,6 +1312,10 @@ func accept_order(i:int,ticket:int)->bool:
 	return true
 
 func release_order():
+	if manual_main_seat>=0 and manual_main_seat<guests.size():
+		var mg=guests[manual_main_seat]
+		if mg!=null and mg.ticket==manual_main_ticket and mg.get("service","")=="preparing":
+			mg.service="ordered"
 	for food in reserved: ready_food[food]+=1
 	if reserved.is_empty() and held>=0: ready_food[held]+=1
 	reserved.clear()
@@ -1275,6 +1325,9 @@ func release_order():
 	cooked=-1
 	kitchen_time=0
 	order_seat=-1
+	manual_main_seat=-1
+	manual_main_ticket=-1
+	manual_side_carry=false
 
 func utensil_rect(j:int)->Rect2:
 	var pos=layout.fixture_center(layout.kitchens[0])+Vector2(-63+(j%3)*43,-61-int(j/3)*20)
@@ -1298,6 +1351,16 @@ func kitchen_orders(tool:int=-1):
 	if count==0 and tool>=0: line("这件厨具目前没有待做订单。")
 	if order_seat>=0:
 		button("放回备菜并取消接单" if held>=0 else "取消接单",func(): release_order(); kitchen_orders())
+	elif held>=0 and (manual_main_seat>=0 or manual_side_carry):
+		button("放回手持餐盘",func(): release_order(); kitchen_orders())
+	elif tool<0 and cooked<0 and held<0:
+		for i in range(guests.size()):
+			var g=guests[i]
+			if g!=null and g.get("service","")=="ordered" and g.get("main_order",-1)>=0 and ready_food[int(g.main_order)]>0:
+				button("亲自送主菜 · %s · %s"%[seat_label(i),dish_name(int(g.main_order))],func(): pickup_main_order(i);panel.hide())
+		for food in SIDE_FOODS:
+			if ready_food[food]>0:
+				button("端自取盘 · %s（余%d）"%[ING[food],ready_food[food]],func(): pickup_side_tray(food);panel.hide())
 	close_button()
 
 func show_dish(i:int,ticket:int):
@@ -1555,59 +1618,169 @@ func preferred_special(g:Dictionary)->int:
 	if g.profile.special_want in available: return g.profile.special_want
 	return Patrons.choose(g.profile,available,patron_rng)
 
+func record_guest_main_order(g:Dictionary):
+	g.main_order=-1
+	var available=menu.mains.filter(func(id):return ready_food[Dishes.by_id(id).core[0]]>0 or (id==7 and ready_food[6]>0))
+	var id=Patrons.choose(g.profile,available,patron_rng)
+	if id>=0:
+		g.main_dish=id
+		g.main_order=Dishes.by_id(id).core[0]
+		if id==7 and ready_food[1]==0: g.main_order=6
+	if g.order<0 and g.profile.special_want in menu.specials and preferred_special(g)==g.profile.special_want:
+		g.order=g.profile.special_want
+		g.order_at=g.wait
+		g.craving=g.profile.preference
+	g.service="ordered" if g.main_order>=0 else "out"
+
+func complete_main_delivery(g:Dictionary,food:int):
+	g.main_food=food
+	if not g.has("served_at"): g.served_at=g.wait
+	g.mains_eaten=g.get("mains_eaten",0)+1
+	g.last_meal=0
+	g.service="served";g.pot_food=food;g.full+=FILL[food]
+	g.liked=g.liked or Patrons.likes(g.profile,Dishes.by_id(g.main_dish).tags);food_served[food]+=1
+
+func take_main_order(seat:int)->bool:
+	if phase!="营业" or seat<0 or seat>=guests.size() or player.distance_to(seats[seat])>=65: return false
+	var g=guests[seat]
+	if g==null or not g.trip.is_empty() or g.get("service","waiting")!="waiting": return false
+	record_guest_main_order(g)
+	notify("已记录%s的主菜点单。"%seat_label(seat))
+	return true
+
+func pickup_main_order(seat:int)->bool:
+	if phase!="营业" or not at_kitchen() or held>=0 or cooked>=0 or order_seat>=0 or manual_main_seat>=0: return false
+	if seat<0 or seat>=guests.size(): return false
+	var g=guests[seat]
+	if g==null or g.get("service","")!="ordered" or int(g.get("main_order",-1))<0: return false
+	var food=int(g.main_order)
+	if ready_food[food]<=0: return false
+	ready_food[food]-=1
+	held=food
+	manual_main_seat=seat
+	manual_main_ticket=int(g.ticket)
+	g.service="preparing"
+	notify("已端起%s的%s，前往桌边送餐。"%[seat_label(seat),dish_name(food)])
+	return true
+
+func deliver_main_order(seat:int)->bool:
+	if phase!="营业" or manual_main_seat!=seat or held<0 or cooked>=0: return false
+	if seat<0 or seat>=guests.size() or player.distance_to(seats[seat])>=65: return false
+	var g=guests[seat]
+	if g==null or g.ticket!=manual_main_ticket or not g.trip.is_empty(): return false
+	var food=held
+	complete_main_delivery(g,food)
+	held=-1
+	manual_main_seat=-1
+	manual_main_ticket=-1
+	notify("已为%s送上%s。"%[seat_label(seat),dish_name(food)])
+	return true
+
+func pickup_side_tray(food:int)->bool:
+	if phase!="营业" or not at_kitchen() or held>=0 or cooked>=0 or order_seat>=0 or manual_main_seat>=0: return false
+	if food not in SIDE_FOODS or ready_food[food]<=0: return false
+	ready_food[food]-=1
+	held=food
+	manual_side_carry=true
+	notify("已端起%s，前往食材台补餐。"%ING[food])
+	return true
+
+func refill_station_manual(station:int)->bool:
+	if phase!="营业" or not manual_side_carry or held<0: return false
+	if station<0 or station>=layout.stations.size() or player.distance_to(layout.center(layout.station_cell(station)))>=65: return false
+	if not add_plate(station,held): return false
+	var food=held
+	held=-1
+	manual_side_carry=false
+	notify("已向%d号食材台补入%s。"%[station+1,ING[food]])
+	return true
+
+func choose_table_service_seat(role_key:String,exclude_seat:int=-1)->int:
+	var taking=role_key=="order"
+	var seat=-1
+	var best_score=-INF
+	var pref_zone=int(staff[role_key].zone) if staff.has(role_key) and staff[role_key].hired else -1
+	for i in guests.size():
+		if i==exclude_seat: continue
+		var g=guests[i]
+		if g==null or not g.trip.is_empty(): continue
+		if g.get("service","waiting")!=("waiting" if taking else "ordered"): continue
+		var score=g.wait-g.get("reordered_at",0.0)
+		if pref_zone>=0 and layout.tables[seat_tables[i]].zone==pref_zone:
+			score+=Staff.ZONE_PRIORITY_BONUS
+		if score>best_score:
+			seat=i
+			best_score=score
+	return seat
+
 func tick_table_service(w:Dictionary,dt:float):
+	var role_key:String=w.get("key","order" if w.role=="点单" else "deliver")
 	if not w.path.is_empty():
 		var target=layout.center(w.path[0])
 		if w.pos.x!=target.x: w.left=target.x<w.pos.x
-		w.pos=w.pos.move_toward(target,200*dt)
+		w.pos=w.pos.move_toward(target,Staff.active_speed(staff,role_key)*dt)
 		if w.pos==target: w.path.pop_front()
 		return
 	if w.stage!="idle":
-		var g=guests[w.seat]
+		var was_deliver=(w.stage=="deliver")
+		var g=guests[w.seat] if w.seat>=0 and w.seat<guests.size() else null
 		if g==null or g.ticket!=w.ticket:
 			if w.food>=0: ready_food[w.food]+=1
 		elif w.stage=="order":
-			g.main_order=-1
-			var available=menu.mains.filter(func(id):return ready_food[Dishes.by_id(id).core[0]]>0 or (id==7 and ready_food[6]>0))
-			var id=Patrons.choose(g.profile,available,patron_rng)
-			if id>=0:
-				g.main_dish=id
-				g.main_order=Dishes.by_id(id).core[0]
-				if id==7 and ready_food[1]==0: g.main_order=6
-			if g.order<0 and g.profile.special_want in menu.specials and preferred_special(g)==g.profile.special_want:
-				g.order=g.profile.special_want
-				g.order_at=g.wait
-				g.craving=g.profile.preference
-			g.service="ordered" if g.main_order>=0 else "out"
+			record_guest_main_order(g)
+			order_trips+=1
+			if Staff.active_capacity(staff,"order")>=2:
+				var tbl=seat_tables[w.seat]
+				for k in guests.size():
+					if k!=w.seat and seat_tables[k]==tbl and guests[k]!=null and guests[k].trip.is_empty() and guests[k].get("service","waiting")=="waiting":
+						record_guest_main_order(guests[k])
+						order_trips+=1
+						break
 		elif w.stage=="kitchen":
 			var food=int(g.main_order)
 			if ready_food[food]<=0: food=-1
 			if food>=0:
 				ready_food[food]-=1;w.food=food;w.stage="deliver"
+				if Staff.active_capacity(staff,"deliver")>=2:
+					var second=choose_table_service_seat("deliver",w.seat)
+					if second>=0:
+						var g2=guests[second]
+						var food2=int(g2.main_order)
+						if food2>=0 and ready_food[food2]>0:
+							ready_food[food2]-=1;g2.service="preparing"
+							w.extra.append({"seat":second,"ticket":g2.ticket,"food":food2})
 				w.path=layout.path(layout.pickup,layout.service_spots[layout.cell(seats[w.seat])],true,layout.service_obstacles)
 				return
 			g.service="out"
 		elif w.stage=="deliver":
-			g.main_food=w.food
-			if not g.has("served_at"): g.served_at=g.wait
-			g.mains_eaten=g.get("mains_eaten",0)+1
-			g.last_meal=0
-			g.service="served";g.pot_food=w.food;g.full+=FILL[w.food]
-			g.liked=g.liked or Patrons.likes(g.profile,Dishes.by_id(g.main_dish).tags);food_served[w.food]+=1
+			complete_main_delivery(g,w.food)
+			deliver_trips+=1
 		w.stage="idle";w.food=-1
-	var taking=w.role=="点单"
-	var seat=-1
-	var longest=-1.0
-	for i in guests.size():
-		var g=guests[i]
-		if g==null or not g.trip.is_empty(): continue
-		if g.get("service","waiting")!=("waiting" if taking else "ordered"): continue
-		var waiting_time=g.wait-g.get("reordered_at",0.0)
-		if waiting_time>longest:
-			seat=i
-			longest=waiting_time
-	if seat<0: return
+		if was_deliver:
+			while not w.get("extra",[]).is_empty():
+				var item=w.extra.pop_front()
+				var ng=guests[item.seat] if item.seat>=0 and item.seat<guests.size() else null
+				if ng==null or ng.ticket!=item.ticket:
+					ready_food[item.food]+=1
+					continue
+				var route=layout.path(layout.cell(w.pos),layout.service_spots[layout.cell(seats[item.seat])],true,layout.service_obstacles)
+				if route.is_empty():
+					ready_food[item.food]+=1
+					ng.service="ordered"
+					continue
+				w.seat=item.seat;w.ticket=item.ticket;w.food=item.food;w.stage="deliver";w.path=route
+				return
+	var seat=choose_table_service_seat(role_key)
+	if seat<0:
+		w.delay=0.0
+		return
+	var wait_needed=Staff.dispatch_delay(staff,role_key)
+	if float(w.get("delay",0.0))<wait_needed:
+		w.delay=float(w.get("delay",0.0))+dt
+		if w.delay<wait_needed: return
+	w.delay=0.0
 	var guest=guests[seat]
+	var taking=role_key=="order"
 	var target=layout.service_spots[layout.cell(seats[seat])] if taking else layout.pickup
 	var path=layout.path(layout.cell(w.pos),target,true,layout.service_obstacles)
 	if path.is_empty(): return
@@ -1637,7 +1810,7 @@ func tick_staff(dt: float):
 	staff_animation+=dt
 	if not staff_path.is_empty():
 		var target=layout.center(staff_path[0])
-		staff_pos=staff_pos.move_toward(target,dt*(staff_speed() if employee else 130.0))
+		staff_pos=staff_pos.move_toward(target,dt*Staff.active_speed(staff,"refill"))
 		if staff_pos.distance_to(target)<1: staff_path.pop_front()
 		return
 	staff_clock+=dt
@@ -1670,7 +1843,7 @@ func tick_staff(dt: float):
 	staff_station=chosen
 	var shortest=layout.path(layout.kitchen_cell(),layout.station_cell(chosen),true,layout.service_obstacles)
 	if shortest.is_empty(): return
-	for j in range(mini(layout.STATION_CAPACITY-station_plate_count(chosen),staff_capacity() if employee else 2)):
+	for j in range(mini(layout.STATION_CAPACITY-station_plate_count(chosen),Staff.active_capacity(staff,"refill"))):
 		var food=choose_supply_food(chosen)
 		if food<0: break
 		ready_food[food]-=1;staff_carry.append(food)
@@ -1710,6 +1883,7 @@ func checkout(i: int):
 	var g = guests[i]
 	if g == null: return
 	if order_seat==i: release_order()
+	if manual_main_seat==i: release_order()
 	var fee = menu_price
 	money += fee
 	income += fee
@@ -1757,14 +1931,18 @@ func checkout(i: int):
 func end_day():
 	for w in service_team:
 		if w.food>=0: ready_food[w.food]+=1
+		for item in w.get("extra",[]): ready_food[item.food]+=1
 	service_team.clear()
 	if phase!="营业": return
 	for i in range(seats.size()):
 		if guests[i] != null: checkout(i)
-	if employee:
-		money -= 8
-		spending += 8
-		staff_exp=mini(60,staff_exp+staff_trips+2)
+	var wages=Staff.daily_wages(staff)
+	if wages>0:
+		money -= wages
+		spending += wages
+	Staff.gain_exp(staff,"order",order_trips)
+	Staff.gain_exp(staff,"deliver",deliver_trips)
+	Staff.gain_exp(staff,"refill",staff_trips)
 	for p in plates:
 		if p.portions==6: ready_food[p.food]+=1
 	plates.clear()
@@ -1773,6 +1951,7 @@ func end_day():
 	if held >= 0:
 		ready_food[held] += 1
 		held = -1
+	manual_main_seat=-1;manual_main_ticket=-1;manual_side_carry=false
 	lost+=waiting.size();waiting.clear()
 	var rating=int(float(satisfaction)/maxi(1,served))
 	var narrow_menu=served>=3 and food_served.count(0)>=5
@@ -1799,7 +1978,10 @@ func end_day():
 		var stat=zone_stats[z]
 		if stat.visits>0: summary+="\n%s区 · 首菜平均 %.1f 秒 / 自取往返 %.1f 秒"%[layout.zone_name(z),stat.first_wait/stat.visits,stat.side_walk/stat.visits]
 	summary+="\n餐费%d金 · 供应%d盘"%[menu_price,food_served.reduce(func(a,b):return a+b,0)]
-	if employee: summary+="\n露米完成%d趟补餐 · 经验%d · Lv.%d"%[staff_trips,staff_exp,staff_level()]
+	for role in Staff.ROLES:
+		if staff[role].hired:
+			var trips=order_trips if role=="order" else deliver_trips if role=="deliver" else staff_trips
+			summary+="\n%s（%s）执勤%d次 · 经验%d · Lv.%d"%[Staff.NAMES[role],Staff.TITLES[role],trips,staff[role].exp,staff_level(role)]
 	business_history=preload("res://systems/ledger.gd").record(business_history,{
 		"day":day,"income":income,"spending":spending,"tips":tips,"served":served,
 		"score_total":satisfaction,"plates":food_served.reduce(func(a,b):return a+b,0),
@@ -1889,7 +2071,7 @@ func load_mastery(data: Dictionary):
 	if not mastery_by_dish.has(STEW_SLOT): mastery_by_dish[STEW_SLOT]=int(data.get("mastery",0))
 
 func snapshot() -> Dictionary:
-	return {"reputation":reputation,"bulletin":bulletin,"event_booked":event_booked,"formulas":formulas.duplicate(true),"regular_menu":regular_menu.duplicate(),"offerings":offerings.duplicate(),"version":5,"menu":menu.duplicate(true),"dishes_unlocked":dishes_unlocked.duplicate(),"layout_plans":layout_plans.duplicate(true),"history":business_history.duplicate(true),"layout":layout.snapshot(),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"mastery_by_dish":mastery_save(),"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
+	return {"reputation":reputation,"bulletin":bulletin,"event_booked":event_booked,"formulas":formulas.duplicate(true),"regular_menu":regular_menu.duplicate(),"offerings":offerings.duplicate(),"version":5,"menu":menu.duplicate(true),"dishes_unlocked":dishes_unlocked.duplicate(),"layout_plans":layout_plans.duplicate(true),"history":business_history.duplicate(true),"layout":layout.snapshot(),"staff":Staff.serialize(staff),"staff_zone":staff_zone,"money":money,"day":day,"raw":raw.duplicate(),"ready":ready_food.duplicate(),"mastery":mastery,"mastery_by_dish":mastery_save(),"affection":affection,"employee":employee,"decor":decor,"decor_x":decor_pos.x,"decor_y":decor_pos.y,"phase":phase,"summary":summary,"income":income,"spending":spending,"tips":tips,"served":served,"satisfaction":satisfaction,"menu_price":menu_price,"staff_exp":staff_exp,"food_served":food_served.duplicate(),"special_done":special_done,"saved_at":Time.get_datetime_string_from_system()}
 
 func save_game() -> bool:
 	if phase=="营业":
@@ -1930,20 +2112,20 @@ func apply_save(data: Dictionary):
 	if data.has("layout"): layout.restore(data.layout)
 	else: layout.reset()
 	if not player_can_stand(player): player=ENTRANCE_AISLE
-	staff_zone=clampi(int(data.get("staff_zone",-1)),-1,2)
+	staff=Staff.migrate(data)
 	sync_seats()
 	money=int(data.get("money",150));day=int(data.get("day",1))
 	raw=data.get("raw",[0,0,0,0,0,0]).map(func(n):return int(n))
 	ready_food=data.get("ready",[0,0,0,0,0,0,0]).map(func(n):return int(n))
 	load_mastery(data);affection=int(data.get("affection",0))
-	employee=data.get("employee",false);decor=data.get("decor",false)
+	decor=data.get("decor",false)
 	decor_pos=Vector2(data.get("decor_x",1080),data.get("decor_y",600))
 	phase=data.get("phase","准备");summary=data.get("summary","")
 	income=int(data.get("income",0));spending=int(data.get("spending",0));tips=int(data.get("tips",0));served=int(data.get("served",0));satisfaction=int(data.get("satisfaction",0))
-	menu_price=clampi(roundi(float(data.get("menu_price",24))/3.0)*3,18,30);staff_exp=int(data.get("staff_exp",0))
+	menu_price=clampi(roundi(float(data.get("menu_price",24))/3.0)*3,18,30)
 	food_served=data.get("food_served",[0,0,0,0,0,0,0]).duplicate();special_done=data.get("special_done",false)
 	guest_target=expected_guests()
-	order_seat=-1;kitchen_time=0;plates.clear();staff_carry.clear();staff_path.clear();held=-1;build_mode=false;moving_table=-1;layout_history.clear()
+	order_seat=-1;manual_main_seat=-1;manual_main_ticket=-1;manual_side_carry=false;kitchen_time=0;plates.clear();staff_carry.clear();staff_path.clear();held=-1;build_mode=false;moving_table=-1;layout_history.clear()
 	if phase=="结算": show_summary()
 
 func show_menu():
