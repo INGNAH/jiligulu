@@ -37,6 +37,8 @@ func run():
 	g.player=g.layout.center(g.KITCHEN_STATION)
 	g.show_dish(0,guest.ticket)
 	g.cook_order(0,guest.ticket)
+	g.cook_cursor.value=55
+	g.finish_service_heat(g.heat_generation)
 	g.player=g.seats[0]
 	g.tick_business(2.6)
 	check(g.held<0 and not g.serve_guest(0),"finished meal stays at stove")
